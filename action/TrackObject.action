@@ -1,0 +1,18 @@
+# Action for tracking a specific object
+
+# Goal
+string target_class          # class name to track (e.g., "person", "cup")
+float64 confidence_threshold # minimum confidence for tracking
+float64 timeout_duration     # maximum tracking duration in seconds
+bool follow_target          # whether to send navigation commands to follow
+---
+# Result
+bool success
+string message
+int32 total_detections      # number of times object was detected
+float64 tracking_duration   # actual tracking duration
+---
+# Feedback
+DetectedObject current_detection
+float64 tracking_confidence
+float64 elapsed_time

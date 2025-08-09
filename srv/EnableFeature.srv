@@ -1,0 +1,9 @@
+# Service to enable/disable vision features
+
+# Request
+string feature_name           # name of the feature to control
+bool enable                   # true to enable, false to disable
+---
+# Response
+bool success
+string message

@@ -1,0 +1,71 @@
+# GestureBot Test Configuration
+# Configuration parameters for test execution
+
+test_suite:
+  name: "gesturebot_vision_system"
+  version: "1.0.0"
+  timeout_per_test: 300  # seconds
+  
+# Test execution parameters
+execution:
+  parallel_tests: false
+  verbose_output: true
+  save_results: true
+  results_directory: "test/results"
+
+# Performance test thresholds
+performance_thresholds:
+  max_processing_time: 200.0  # milliseconds
+  min_fps: 5.0
+  max_cpu_usage: 80.0  # percentage
+  max_memory_usage: 2048.0  # MB
+
+# MediaPipe model requirements
+required_models:
+  - name: "efficientdet.tflite"
+    min_size: 1048576  # 1MB minimum
+    required: true
+  - name: "hand_landmarker.task"
+    min_size: 1048576  # 1MB minimum
+    required: false
+  - name: "gesture_recognizer.task"
+    min_size: 1048576  # 1MB minimum
+    required: false
+
+# Test image specifications
+test_images:
+  resolution: [640, 480]
+  formats: ["bgr8"]
+  count: 5
+  complexity_levels: ["simple", "medium", "complex"]
+
+# ROS 2 test parameters
+ros2:
+  node_startup_timeout: 10.0  # seconds
+  topic_discovery_timeout: 5.0  # seconds
+  message_timeout: 2.0  # seconds
+  
+# Camera test parameters
+camera:
+  mock_fps: 10.0  # Hz
+  test_duration: 3.0  # seconds
+  expected_topics:
+    - "/camera/image_raw"
+    - "/camera/image_raw/compressed"
+
+# Vision processing test parameters
+vision_processing:
+  test_duration: 5.0  # seconds
+  expected_topics:
+    - "/vision/objects"
+    - "/vision/gestures"
+    - "/vision/performance"
+  
+# System resource monitoring
+resource_monitoring:
+  enabled: true
+  sample_interval: 0.1  # seconds
+  alert_thresholds:
+    cpu_usage: 90.0  # percentage
+    memory_usage: 2048.0  # MB
+    processing_time: 500.0  # milliseconds

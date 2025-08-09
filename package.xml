@@ -1,0 +1,78 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>gesturebot</name>
+  <version>1.0.0</version>
+  <description>Comprehensive MediaPipe-based computer vision system for GestureBot robotics platform</description>
+  
+  <maintainer email="your.email@example.com">GestureBot Team</maintainer>
+  <license>MIT</license>
+  
+  <url type="website">https://github.com/your-org/gesturebot</url>
+  <url type="bugtracker">https://github.com/your-org/gesturebot/issues</url>
+  <url type="repository">https://github.com/your-org/gesturebot</url>
+  
+  <author email="your.email@example.com">GestureBot Team</author>
+  
+  <!-- Build tool dependencies -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+  
+  <!-- Core ROS 2 dependencies -->
+  <depend>rclcpp</depend>
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>image_transport</depend>
+  
+  <!-- Navigation dependencies -->
+  <depend>nav2_msgs</depend>
+  <depend>nav2_common</depend>
+  <depend>navigation2</depend>
+  <depend>slam_toolbox</depend>
+  
+  <!-- Action dependencies -->
+  <depend>action_msgs</depend>
+  <depend>rclcpp_action</depend>
+  
+  <!-- Message generation -->
+  <build_depend>rosidl_default_generators</build_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+  
+  <!-- Computer Vision dependencies -->
+  <depend>libopencv-dev</depend>
+  <depend>python3-opencv</depend>
+
+  <!-- Note: Camera-related dependencies excluded to avoid conflicts with source-built installations -->
+  <!-- libcamera, rpicam tools are installed from source at /usr/local/bin/ -->
+  
+  <!-- Python dependencies -->
+  <depend>python3-numpy</depend>
+  <depend>python3-scipy</depend>
+  <depend>python3-matplotlib</depend>
+  <depend>python3-psutil</depend>
+  
+  <!-- MediaPipe dependency excluded - using virtual environment installation -->
+  <!-- MediaPipe should be installed in virtual environment, not system-wide -->
+  <!-- <exec_depend>python3-mediapipe</exec_depend> -->
+  
+  <!-- Launch dependencies -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>launch_xml</exec_depend>
+  <exec_depend>launch_yaml</exec_depend>
+  
+  <!-- Testing dependencies -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>python3-pytest</test_depend>
+  
+  <!-- Export information -->
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

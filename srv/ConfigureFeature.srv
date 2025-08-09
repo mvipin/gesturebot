@@ -1,0 +1,11 @@
+# Service to configure vision feature parameters
+
+# Request
+string feature_name           # name of the feature to configure
+string parameter_name         # parameter to change
+string parameter_value        # new value (as string, will be converted)
+---
+# Response
+bool success
+string message
+string old_value             # previous parameter value

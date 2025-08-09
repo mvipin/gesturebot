@@ -1,0 +1,117 @@
+# GestureBot Vision System Configuration
+
+# Global vision system parameters
+vision_system:
+  camera_topic: "/camera/image_raw"
+  debug_mode: false
+  performance_monitoring: true
+  
+# Object Detection Configuration
+object_detection_node:
+  ros__parameters:
+    model_path: "models/efficientdet.tflite"
+    confidence_threshold: 0.5
+    max_results: 5
+    frame_skip: 1
+    priority: 0  # Critical priority
+    enabled: true
+
+# Gesture Recognition Configuration  
+gesture_recognition_node:
+  ros__parameters:
+    confidence_threshold: 0.7
+    max_hands: 2
+    gesture_stability_threshold: 0.5
+    frame_skip: 1
+    priority: 1  # High priority
+    enabled: true
+    
+    # Gesture command mappings
+    gesture_commands:
+      thumbs_up: "start_navigation"
+      thumbs_down: "stop_navigation"
+      open_palm: "pause_navigation"
+      pointing_up: "move_forward"
+      pointing_left: "turn_left"
+      pointing_right: "turn_right"
+      peace: "follow_person"
+      fist: "emergency_stop"
+      wave: "return_home"
+
+# Hand Landmarks Configuration
+hand_landmarks_node:
+  ros__parameters:
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+    max_hands: 2
+    frame_skip: 2
+    priority: 2  # Medium priority
+    enabled: false
+
+# Pose Landmarks Configuration
+pose_landmarks_node:
+  ros__parameters:
+    min_detection_confidence: 0.5
+    min_tracking_confidence: 0.5
+    model_complexity: 1  # 0=lite, 1=full, 2=heavy
+    frame_skip: 2
+    priority: 2  # Medium priority
+    enabled: false
+
+# Face Detection Configuration
+face_detection_node:
+  ros__parameters:
+    min_detection_confidence: 0.5
+    frame_skip: 3
+    priority: 2  # Medium priority
+    enabled: false
+
+# Ball Tracking Configuration (OpenCV)
+ball_tracking_node:
+  ros__parameters:
+    min_radius: 10
+    max_radius: 100
+    color_lower: [0, 100, 100]    # HSV lower bound for orange ball
+    color_upper: [10, 255, 255]   # HSV upper bound for orange ball
+    frame_skip: 1
+    priority: 1  # High priority for dynamic tracking
+    enabled: false
+
+# Performance Monitor Configuration
+performance_monitor_node:
+  ros__parameters:
+    monitor_interval: 5.0
+    log_performance: true
+    alert_threshold_cpu: 80.0
+    alert_threshold_memory: 1500.0  # MB
+    alert_threshold_processing_time: 200.0  # ms
+    enabled: true
+
+# Navigation Bridge Configuration
+gesture_navigation_bridge:
+  ros__parameters:
+    gesture_confidence_threshold: 0.8
+    emergency_stop_enabled: true
+    max_linear_velocity: 0.5
+    max_angular_velocity: 1.0
+    gesture_repeat_delay: 1.0
+    emergency_gestures: ["fist", "stop_sign", "crossed_arms"]
+    enabled: true
+
+# System Resource Limits
+resource_limits:
+  max_cpu_usage: 80.0      # Percentage
+  max_memory_usage: 2048   # MB
+  max_processing_time: 150 # ms per frame
+  
+# Feature Priority Levels
+# 0 = Critical (safety, obstacle detection)
+# 1 = High (navigation, gesture commands)  
+# 2 = Medium (interaction, tracking)
+# 3 = Low (analysis, classification)
+
+priority_management:
+  adaptive_processing: true
+  cpu_threshold_medium: 60.0   # Disable low priority features
+  cpu_threshold_high: 75.0     # Disable medium priority features
+  cpu_threshold_critical: 90.0 # Only critical features
