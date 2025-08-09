@@ -18,7 +18,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
-from gesturebot_vision.msg import VisionPerformance
+from gesturebot.msg import VisionPerformance
 
 
 @dataclass
@@ -192,16 +192,20 @@ class MediaPipeBaseNode(Node, ABC):
         try:
             msg = VisionPerformance()
             msg.header.stamp = self.get_clock().now().to_msg()
-            msg.feature_name = self.feature_name
-            msg.frames_processed = self.stats.frames_processed
-            msg.avg_processing_time = self.stats.avg_processing_time
-            msg.current_fps = self.stats.current_fps
-            msg.enabled = self.config.enabled
-            msg.priority = self.config.priority
-            msg.processing_healthy = self.stats.avg_processing_time < 200.0  # 200ms threshold
-            
+            msg.feature_name = str(self.feature_name)
+            msg.frames_processed = int(self.stats.frames_processed)
+            msg.avg_processing_time = float(self.stats.avg_processing_time)
+            msg.current_fps = float(self.stats.current_fps)
+            msg.cpu_usage = float(self.stats.cpu_usage)
+            msg.memory_usage = float(self.stats.memory_usage)
+            msg.enabled = bool(self.config.enabled)
+            msg.priority = int(self.config.priority)
+            msg.processing_healthy = bool(self.stats.avg_processing_time < 200.0)  # 200ms threshold
+            msg.status_message = str("operational" if msg.processing_healthy else "degraded")
+
             self.performance_publisher.publish(msg)
-            
+            self.get_logger().debug(f'Published performance stats for {self.feature_name}')
+
         except Exception as e:
             self.get_logger().error(f'Error publishing performance stats: {e}')
     

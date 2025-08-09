@@ -13,7 +13,7 @@ import mediapipe as mp
 
 from vision_core.base_node import MediaPipeBaseNode, ProcessingConfig
 from vision_core.message_converter import MessageConverter
-from gesturebot_vision.msg import HandGesture
+from gesturebot.msg import HandGesture
 from geometry_msgs.msg import Point
 
 

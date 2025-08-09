@@ -16,7 +16,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped, Twist
 from std_msgs.msg import Bool
-from gesturebot_vision.msg import HandGesture
+from gesturebot.msg import HandGesture
 
 
 class NavigationState(Enum):

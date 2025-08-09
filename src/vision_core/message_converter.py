@@ -9,7 +9,7 @@ import numpy as np
 from typing import List, Optional, Dict, Any
 
 from geometry_msgs.msg import Point, Vector3
-from gesturebot_vision.msg import (
+from gesturebot.msg import (
     DetectedObject, DetectedObjects, HandGesture, HandLandmarks,
     PoseLandmarks, FaceDetection, VisionPerformance
 )

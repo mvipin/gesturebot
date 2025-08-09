@@ -47,6 +47,10 @@ class TestVisionNode(MediaPipeBaseNode):
         self.test_results_pub = self.create_publisher(
             DetectedObjects, '/test/results', 10
         )
+
+        # Override performance timer for faster testing (2 seconds instead of 5)
+        self.performance_timer.destroy()
+        self.performance_timer = self.create_timer(2.0, self.publish_performance_stats)
     
     def initialize_mediapipe(self) -> bool:
         """Initialize test MediaPipe components."""
@@ -143,14 +147,20 @@ class VisionResultsCollector(Node):
     
     def performance_callback(self, msg: VisionPerformance):
         """Handle performance metrics."""
+        timestamp = time.time()
         self.performance_data.append({
-            'timestamp': time.time(),
+            'timestamp': timestamp,
             'feature_name': msg.feature_name,
             'frames_processed': msg.frames_processed,
             'avg_processing_time': msg.avg_processing_time,
             'current_fps': msg.current_fps,
             'processing_healthy': msg.processing_healthy
         })
+
+        # Debug output for performance updates
+        print(f"🎯 Performance update received: {msg.feature_name} - "
+              f"Frames: {msg.frames_processed}, FPS: {msg.current_fps:.1f}, "
+              f"Avg time: {msg.avg_processing_time:.1f}ms")
     
     def get_stats(self) -> Dict[str, Any]:
         """Get collection statistics."""
@@ -274,45 +284,76 @@ class TestVisionNodes(unittest.TestCase):
     
     def test_vision_processing_pipeline(self):
         """Test complete vision processing pipeline."""
+        print("🔍 Testing complete vision processing pipeline...")
+
         # Create nodes
         image_publisher = MockImagePublisher(self.test_images)
         vision_node = TestVisionNode()
         results_collector = VisionResultsCollector()
-        
+
         # Create executor
         executor = SingleThreadedExecutor()
         executor.add_node(image_publisher)
         executor.add_node(vision_node)
         executor.add_node(results_collector)
-        
-        # Run processing
-        test_duration = 3.0  # seconds
+
+        # Extended test duration to allow for performance updates (published every 2 seconds in test)
+        test_duration = 5.0  # seconds (allows for 2+ performance updates)
         start_time = time.time()
-        
+
+        print(f"📊 Running vision pipeline test for {test_duration} seconds...")
+        print("🔍 Debug: Performance updates are published every 2 seconds (test override)")
+
+        frame_count = 0
+        last_debug_time = start_time
+
         while (time.time() - start_time) < test_duration:
             executor.spin_once(timeout_sec=0.1)
-        
+
+            # Debug output every second
+            current_time = time.time()
+            if current_time - last_debug_time >= 1.0:
+                elapsed = current_time - start_time
+                stats = results_collector.get_stats()
+                print(f"📈 Debug [{elapsed:.1f}s]: Objects: {stats['objects_received']}, "
+                      f"Performance: {stats['performance_updates']}, "
+                      f"Frames: {vision_node.processed_frames}")
+                last_debug_time = current_time
+
         # Check results
         stats = results_collector.get_stats()
-        
+        print(f"📊 Final test results: {stats}")
+
         # Assertions
-        self.assertGreater(stats['objects_received'], 0, 
+        self.assertGreater(stats['objects_received'], 0,
                           "No object detection results received")
-        self.assertGreater(stats['performance_updates'], 0, 
-                          "No performance updates received")
-        
+
+        # Updated assertion with better error message
+        if stats['performance_updates'] == 0:
+            print("⚠️ Warning: No performance updates received")
+            print("🔍 Debug: Performance timer publishes every 5 seconds")
+            print(f"🔍 Debug: Test ran for {test_duration} seconds")
+            print("🔍 Debug: First performance update should occur at ~5 seconds")
+
+        self.assertGreater(stats['performance_updates'], 0,
+                          f"No performance updates received after {test_duration}s "
+                          f"(performance timer: 5s interval)")
+
         # Check processing performance
-        self.assertGreater(vision_node.processed_frames, 0, 
+        self.assertGreater(vision_node.processed_frames, 0,
                           "No frames processed")
-        
+
         if vision_node.processing_times:
             avg_processing_time = sum(vision_node.processing_times) / len(vision_node.processing_times)
-            self.assertLess(avg_processing_time, 100, 
+            self.assertLess(avg_processing_time, 100,
                            f"Processing too slow: {avg_processing_time:.1f}ms")
-        
-        print(f"Vision processing test results: {stats}")
-        print(f"Processed {vision_node.processed_frames} frames")
-        
+            print(f"✅ Average processing time: {avg_processing_time:.1f}ms")
+
+        print(f"✅ Vision processing test completed:")
+        print(f"   Objects received: {stats['objects_received']}")
+        print(f"   Performance updates: {stats['performance_updates']}")
+        print(f"   Frames processed: {vision_node.processed_frames}")
+
         # Clean up
         executor.shutdown()
     

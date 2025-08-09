@@ -16,7 +16,7 @@ from mediapipe.tasks.python import vision as mp_vis
 
 from vision_core.base_node import MediaPipeBaseNode, ProcessingConfig, MediaPipeCallbackMixin
 from vision_core.message_converter import MessageConverter
-from gesturebot_vision.msg import DetectedObjects
+from gesturebot.msg import DetectedObjects
 
 
 class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
@@ -65,7 +65,7 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         possible_paths = [
             Path(__file__).parent.parent.parent / 'models' / 'efficientdet.tflite',
             Path.home() / 'GestureBot' / 'mediapipe-test' / 'efficientdet.tflite',
-            Path('/opt/ros/humble/share/gesturebot_vision/models/efficientdet.tflite'),
+            Path('/opt/ros/jazzy/share/gesturebot/models/efficientdet.tflite'),
         ]
         
         for path in possible_paths:
