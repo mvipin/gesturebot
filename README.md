@@ -446,6 +446,69 @@ print('✅ gesturebot package ready!')
 - **Source-Built Tools**: libcamera, rpicam-apps, camera_ros
 
 **Note**: Package.xml has been configured to exclude conflicting camera and MediaPipe system dependencies.
+
+### Camera_ros Build Instructions
+
+The `camera_ros` package provides ROS 2 integration for the source-built libcamera system. This must be built separately from the main gesturebot package.
+
+**Prerequisites:**
+- libcamera and rpicam-apps already built and installed system-wide
+- ROS 2 Jazzy properly installed
+- Source code available at `~/GestureBot/gesturebot_ws/src/camera_ros/`
+
+**Build Process:**
+```bash
+# 1. Navigate to workspace
+cd ~/GestureBot/gesturebot_ws
+
+# 2. Install ROS 2 build dependencies (skip libcamera to use source-built version)
+source /opt/ros/jazzy/setup.bash
+rosdep install -y --from-paths src --ignore-src --rosdistro jazzy --skip-keys=libcamera
+
+# 3. Build camera_ros package
+colcon build --packages-select camera_ros --event-handlers=console_direct+
+
+# 4. Source the workspace
+source install/setup.bash
+```
+
+**Verification:**
+```bash
+# Check package is available
+ros2 pkg list | grep camera_ros
+
+# Test camera node startup
+ros2 run camera_ros camera_node
+
+# Verify topics are published (in another terminal)
+ros2 topic list | grep camera
+# Expected: /camera/image_raw, /camera/image_raw/compressed, /camera/camera_info
+
+# Check image stream
+ros2 topic echo /camera/image_raw --once
+```
+
+**Usage:**
+```bash
+# Basic camera streaming (800x600 default)
+ros2 run camera_ros camera_node
+
+# Custom resolution
+ros2 run camera_ros camera_node --ros-args -p width:=1920 -p height:=1080
+
+# With image rotation
+ros2 run camera_ros camera_node --ros-args -p orientation:=180
+
+# High frame rate with compressed images only
+ros2 launch camera_ros camera_compressed_only.launch.py
+```
+
+**Important Notes:**
+- camera_ros uses the existing source-built libcamera installation
+- Only one process can access the camera at a time (camera_ros OR rpicam-still, not both)
+- Build time: ~45 seconds on Raspberry Pi 5
+- Default resolution: 800x600 @ ~15 FPS
+- Compressed images recommended for network streaming
 colcon build --packages-select gesturebot
 
 # 4. Source environment
