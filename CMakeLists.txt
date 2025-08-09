@@ -77,12 +77,6 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/config
 )
 
-# Install documentation
-install(DIRECTORY
-  doc/
-  DESTINATION share/${PROJECT_NAME}/doc
-)
-
 # Install models directory (for MediaPipe models)
 install(DIRECTORY
   models/
