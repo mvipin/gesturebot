@@ -213,9 +213,14 @@ def main():
     
     for test_name, test_func in tests:
         try:
-            success, *details = test_func() if test_func() is not None else (test_func(), [])
-            if isinstance(success, tuple):
-                success, details = success
+            result = test_func()
+            if isinstance(result, tuple):
+                # Function returns (success, details)
+                success, details = result
+            else:
+                # Function returns just success boolean
+                success = result
+                details = []
             results.append((test_name, success, details))
         except Exception as e:
             print(f"  ❌ Test error: {e}")
