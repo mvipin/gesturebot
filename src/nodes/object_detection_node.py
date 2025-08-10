@@ -7,6 +7,7 @@ Enhanced MediaPipe object detection with navigation integration.
 import time
 from typing import Dict, Any, Optional
 from pathlib import Path
+# Removed deque, threading, datetime imports - now using BufferedLogger from base_node
 
 import cv2
 import numpy as np
@@ -14,9 +15,15 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_py
 from mediapipe.tasks.python import vision as mp_vis
 
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+
 from vision_core.base_node import MediaPipeBaseNode, ProcessingConfig, MediaPipeCallbackMixin
 from vision_core.message_converter import MessageConverter
 from gesturebot.msg import DetectedObjects
+
+
+# BufferedLogger is now imported from vision_core.base_node
 
 
 class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
@@ -35,50 +42,91 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             max_results=5,
             priority=0  # Critical priority for navigation safety
         )
-        
-        super().__init__('object_detection_node', 'object_detection', config)
-        MediaPipeCallbackMixin.__init__(self)
-        
+
         # MediaPipe components
         self.detector = None
-        
-        # Model path
+
+        # Model path (get default before calling parent init)
         self.model_path = self.get_model_path()
-        
+
+        # Initialize parent with default buffered logging (will be updated after parameter declaration)
+        super().__init__(
+            'object_detection_node',
+            'object_detection',
+            config,
+            enable_buffered_logging=True,  # Default, will be updated
+            unlimited_buffer_mode=False    # Default, will be updated
+        )
+        MediaPipeCallbackMixin.__init__(self)
+
+        # Declare parameters for this node
+        self.declare_parameter('unlimited_buffer_mode', False)
+        self.declare_parameter('buffer_logging_enabled', True)
+
+        # Note: BufferedLogger is already initialized by parent class with parameter values
+
+        # Log the buffer configuration (using inherited buffered logger)
+        buffer_stats = self.get_buffer_stats()
+        self.get_logger().info(f"BufferedLogger initialized: {buffer_stats}")
+
+        # Parameters (declare after parent init)
+        self.declare_parameter('model_path', str(self.model_path))
+        self.declare_parameter('confidence_threshold', 0.5)
+        self.declare_parameter('max_results', 5)
+        self.declare_parameter('publish_annotated_images', False)
+
         # Publishers
         self.detections_publisher = self.create_publisher(
             DetectedObjects,
             '/vision/objects',
             self.result_qos
         )
-        
-        # Parameters
-        self.declare_parameter('model_path', str(self.model_path))
-        self.declare_parameter('confidence_threshold', 0.5)
-        self.declare_parameter('max_results', 5)
-        
+
+        # Conditional annotated image publisher
+        self.annotated_image_publisher = None
+        # Note: cv_bridge is already initialized in the base class
+
+        if self.get_parameter('publish_annotated_images').value:
+            self.annotated_image_publisher = self.create_publisher(
+                Image,
+                '/vision/objects/annotated',
+                self.result_qos
+            )
+            self.get_logger().info('Annotated image publishing enabled on /vision/objects/annotated')
+        else:
+            self.get_logger().info('Annotated image publishing disabled')
+
         self.get_logger().info('Object Detection Node initialized')
     
     def get_model_path(self) -> Path:
         """Get the path to the EfficientDet model."""
         # Try multiple possible locations
         possible_paths = [
+            # Installed location (preferred)
+            Path('/home/pi/GestureBot/gesturebot_ws/install/gesturebot/share/gesturebot/models/efficientdet.tflite'),
+            # Source location (development)
             Path(__file__).parent.parent.parent / 'models' / 'efficientdet.tflite',
+            # Alternative locations
             Path.home() / 'GestureBot' / 'mediapipe-test' / 'efficientdet.tflite',
             Path('/opt/ros/jazzy/share/gesturebot/models/efficientdet.tflite'),
         ]
-        
+
         for path in possible_paths:
             if path.exists():
                 return path
-        
+
         # Default path (may not exist yet)
-        return Path(__file__).parent.parent.parent / 'models' / 'efficientdet.tflite'
+        return Path('/home/pi/GestureBot/gesturebot_ws/install/gesturebot/share/gesturebot/models/efficientdet.tflite')
     
     def initialize_mediapipe(self) -> bool:
         """Initialize MediaPipe object detector."""
         try:
-            model_path = Path(self.get_parameter('model_path').value)
+            # Try to get parameter, fall back to default if not declared yet
+            try:
+                model_path = Path(self.get_parameter('model_path').value)
+            except:
+                # Parameter not declared yet, use default
+                model_path = self.model_path
             
             if not model_path.exists():
                 self.get_logger().error(f'Model file not found: {model_path}')
@@ -86,11 +134,23 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             
             # Initialize object detector
             base_options = mp_py.BaseOptions(model_asset_path=str(model_path))
+
+            # Try to get parameters, fall back to defaults if not declared yet
+            try:
+                max_results = self.get_parameter('max_results').value
+            except:
+                max_results = 5  # Default value
+
+            try:
+                confidence_threshold = self.get_parameter('confidence_threshold').value
+            except:
+                confidence_threshold = 0.5  # Default value
+
             options = mp_vis.ObjectDetectorOptions(
                 base_options=base_options,
                 running_mode=mp_vis.RunningMode.LIVE_STREAM,
-                max_results=self.get_parameter('max_results').value,
-                score_threshold=self.get_parameter('confidence_threshold').value,
+                max_results=max_results,
+                score_threshold=confidence_threshold,
                 result_callback=self.create_callback('detection')
             )
             
@@ -109,30 +169,57 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             # Convert BGR to RGB for MediaPipe
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-            
+
             # Run detection asynchronously
             timestamp_ms = int(timestamp * 1000)
             if self.detector:
                 self.detector.detect_async(mp_image, timestamp_ms)
-            
+            else:
+                self.get_logger().error(f'No detector available!')
+                return None
+
             # Get results from callback
             callback_results = self.get_callback_results()
-            
-            if callback_results and callback_results['result'].detections:
-                return {
-                    'detections': callback_results['result'].detections,
-                    'timestamp': timestamp,
-                    'processing_time': (time.time() - timestamp) * 1000
-                }
-            
+
+            if callback_results and 'result' in callback_results and callback_results['result']:
+                detections = callback_results['result'].detections
+
+                if detections:
+                    result_dict = {
+                        'detections': detections,
+                        'timestamp': timestamp,
+                        'processing_time': (time.time() - timestamp) * 1000
+                    }
+
+                    # Include output_image if available (for annotated image publishing)
+                    if 'output_image' in callback_results:
+                        result_dict['output_image'] = callback_results['output_image']
+                        self.log_buffered_event(
+                            'OUTPUT_IMAGE_RECEIVED',
+                            'MediaPipe output image included in results',
+                            image_valid=callback_results["output_image"] is not None,
+                            image_type=type(callback_results["output_image"]).__name__
+                        )
+                    else:
+                        self.log_buffered_event(
+                            'OUTPUT_IMAGE_MISSING',
+                            'No output_image in callback_results'
+                        )
+
+                    return result_dict
+                else:
+                    self.get_logger().debug(f'[ObjectDetection] No detections found')
+            else:
+                self.get_logger().debug(f'[ObjectDetection] No callback results received')
+
             return None
-            
+
         except Exception as e:
             self.get_logger().error(f'Error processing frame: {e}')
             return None
     
     def publish_results(self, results: Dict, timestamp: float) -> None:
-        """Publish object detection results."""
+        """Publish object detection results and optionally annotated images."""
         try:
             # Convert to ROS message
             msg = MessageConverter.mediapipe_detections_to_ros(
@@ -140,32 +227,153 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 'efficientdet',
                 results['processing_time']
             )
-            
+
             # Set header
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = 'camera_frame'
-            
-            # Publish
+
+            # Publish detection results
             self.detections_publisher.publish(msg)
-            
-            # Log significant detections
-            if msg.total_detections > 0:
-                detection_summary = []
-                for obj in msg.objects:
-                    if obj.confidence > 0.7:  # High confidence detections
-                        detection_summary.append(f"{obj.class_name}({obj.confidence:.2f})")
-                
-                if detection_summary:
-                    self.get_logger().info(f'High confidence detections: {", ".join(detection_summary)}')
-            
+
+            # Conditional annotated image publishing
+            self.log_buffered_event(
+                'PUBLISH_CONDITIONS_CHECK',
+                'Checking annotated image publishing conditions',
+                publisher_exists=self.annotated_image_publisher is not None,
+                output_image_in_results="output_image" in results,
+                output_image_not_none=results.get("output_image") is not None
+            )
+
+            if (self.annotated_image_publisher is not None and
+                'output_image' in results and
+                results['output_image'] is not None):
+
+                try:
+                    self.log_buffered_event(
+                        'IMAGE_PROCESSING_START',
+                        'Starting annotated image processing'
+                    )
+
+                    output_image = results['output_image']
+                    self.log_buffered_event(
+                        'OUTPUT_IMAGE_TYPE',
+                        'Retrieved output image from results',
+                        image_type=type(output_image).__name__
+                    )
+
+                    # Convert MediaPipe image to OpenCV format
+                    if hasattr(output_image, 'numpy_view'):
+                        # MediaPipe Image object
+                        cv_image = output_image.numpy_view()
+                        self.log_buffered_event(
+                            'MEDIAPIPE_TO_NUMPY',
+                            'Converted MediaPipe image to numpy',
+                            shape=str(cv_image.shape) if cv_image is not None else "None",
+                            success=cv_image is not None
+                        )
+                    else:
+                        # Already numpy array
+                        cv_image = np.array(output_image)
+                        self.log_buffered_event(
+                            'ARRAY_CONVERSION',
+                            'Converted to numpy array',
+                            shape=str(cv_image.shape) if cv_image is not None else "None",
+                            success=cv_image is not None
+                        )
+
+                    # Ensure we have a valid image
+                    if cv_image is None or cv_image.size == 0:
+                        self.log_buffered_event(
+                            'IMAGE_VALIDATION_FAILED',
+                            'Empty or invalid annotated image, skipping publish',
+                            image_none=cv_image is None,
+                            image_size=cv_image.size if cv_image is not None else 0
+                        )
+                        return
+
+                    # Convert RGB to BGR if needed (MediaPipe uses RGB, ROS typically uses BGR)
+                    if len(cv_image.shape) == 3 and cv_image.shape[2] == 3:
+                        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
+                        self.log_buffered_event(
+                            'COLOR_CONVERSION',
+                            'Converted RGB to BGR',
+                            final_shape=str(cv_image.shape)
+                        )
+
+                    # Convert to ROS Image message
+                    annotated_msg = self.cv_bridge.cv2_to_imgmsg(cv_image, encoding='bgr8')
+                    annotated_msg.header.stamp = msg.header.stamp  # Same timestamp
+                    annotated_msg.header.frame_id = 'camera_frame'
+                    self.log_buffered_event(
+                        'ROS_MESSAGE_CREATED',
+                        'Created ROS Image message',
+                        width=annotated_msg.width,
+                        height=annotated_msg.height,
+                        encoding=annotated_msg.encoding
+                    )
+
+                    # Publish annotated image
+                    self.annotated_image_publisher.publish(annotated_msg)
+                    self.log_buffered_event(
+                        'PUBLISH_SUCCESS',
+                        'Successfully published annotated image',
+                        message_size=len(annotated_msg.data)
+                    )
+
+                except Exception as img_error:
+                    self.log_buffered_event(
+                        'PUBLISH_ERROR',
+                        f'Error publishing annotated image: {img_error}',
+                        error_type=type(img_error).__name__
+                    )
+                    # Still log critical errors to main logger
+                    self.get_logger().error(f'Critical error in annotated image pipeline: {img_error}')
+                    import traceback
+                    self.log_buffered_event(
+                        'PUBLISH_ERROR_TRACEBACK',
+                        'Full error traceback',
+                        traceback=traceback.format_exc()
+                    )
+            # Log high-confidence detections occasionally (every 10th detection)
+            if hasattr(self, '_detection_count'):
+                self._detection_count += 1
+            else:
+                self._detection_count = 1
+
+            if self._detection_count % 10 == 0:
+                high_conf_detections = []
+                for detection in results['detections']:
+                    if detection.categories:
+                        best_category = max(detection.categories, key=lambda c: c.score if c.score else 0)
+                        if best_category.score and best_category.score >= 0.7:
+                            class_name = best_category.category_name or 'unknown'
+                            high_conf_detections.append(f"{class_name}({best_category.score:.2f})")
+
+                if high_conf_detections:
+                    self.get_logger().info(f'High confidence detections: {", ".join(high_conf_detections)}')
+
+
+
         except Exception as e:
             self.get_logger().error(f'Error publishing results: {e}')
-    
+            import traceback
+            self.get_logger().error(f'Traceback: {traceback.format_exc()}')
+
+    def flush_annotated_diagnostics(self) -> None:
+        """Manually flush the annotated image diagnostics buffer."""
+        try:
+            stats = self.get_buffer_stats()
+            self.get_logger().info(f"Manual flush requested - Buffer stats: {stats}")
+            self.buffered_logger.flush()
+        except Exception as e:
+            self.get_logger().error(f'Error in manual flush: {e}')
+
     def cleanup(self) -> None:
         """Cleanup MediaPipe resources."""
         try:
             if self.detector:
                 self.detector.close()
+            # Parent cleanup will handle buffer flushing
             super().cleanup()
         except Exception as e:
             self.get_logger().error(f'Error during cleanup: {e}')

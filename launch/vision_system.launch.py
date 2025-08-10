@@ -9,7 +9,8 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
-from launch_ros.actions import Node
+from launch_ros.actions import Node, ComposableNodeContainer
+from launch_ros.descriptions import ComposableNode
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -17,7 +18,7 @@ def generate_launch_description():
     """Generate launch description for vision system."""
     
     # Package directories
-    vision_pkg_dir = FindPackageShare('gesturebot_vision')
+    vision_pkg_dir = FindPackageShare('gesturebot')
     
     # Launch arguments for feature enable/disable
     declare_object_detection = DeclareLaunchArgument(
@@ -73,6 +74,30 @@ def generate_launch_description():
         default_value='false',
         description='Enable debug output and visualization'
     )
+
+    declare_publish_annotated = DeclareLaunchArgument(
+        'publish_annotated_images',
+        default_value='false',
+        description='Enable publishing of annotated images for visual debugging'
+    )
+
+    declare_enable_camera = DeclareLaunchArgument(
+        'enable_camera',
+        default_value='true',
+        description='Enable camera node for image capture'
+    )
+
+    declare_camera_id = DeclareLaunchArgument(
+        'camera_id',
+        default_value='0',
+        description='Camera ID or device path'
+    )
+
+    declare_camera_format = DeclareLaunchArgument(
+        'camera_format',
+        default_value='',
+        description='Camera pixel format (empty for auto)'
+    )
     
     declare_navigation_bridge = DeclareLaunchArgument(
         'enable_navigation_bridge',
@@ -80,9 +105,40 @@ def generate_launch_description():
         description='Enable gesture navigation bridge'
     )
     
+    # Camera node using ComposableNodeContainer (proper camera_ros integration)
+    camera_container = ComposableNodeContainer(
+        name='camera_container',
+        namespace='',
+        package='rclcpp_components',
+        executable='component_container',
+        composable_node_descriptions=[
+            ComposableNode(
+                package='camera_ros',
+                plugin='camera::CameraNode',
+                name='camera_node',
+                parameters=[{
+                    "camera": LaunchConfiguration('camera_id'),
+                    "width": 640,
+                    "height": 480,
+                    "format": LaunchConfiguration('camera_format'),
+                    # Performance optimization parameters
+                    "fps": 30.0,
+                    "buffer_queue_size": 4,
+                    # Camera controls for better performance
+                    "FrameRate": 30.0,
+                    "ExposureTime": 33000,  # ~30fps exposure time in microseconds
+                    "AnalogueGain": 1.0,
+                }],
+                extra_arguments=[{'use_intra_process_comms': True}],
+            ),
+        ],
+        condition=IfCondition(LaunchConfiguration('enable_camera')),
+        output='screen'
+    )
+
     # Core vision nodes
     object_detection_node = Node(
-        package='gesturebot_vision',
+        package='gesturebot',
         executable='object_detection_node.py',
         name='object_detection_node',
         parameters=[{
@@ -90,13 +146,14 @@ def generate_launch_description():
             'debug_mode': LaunchConfiguration('debug_mode'),
             'confidence_threshold': 0.5,
             'max_results': 5,
+            'publish_annotated_images': LaunchConfiguration('publish_annotated_images'),
         }],
         condition=IfCondition(LaunchConfiguration('enable_object_detection')),
         output='screen'
     )
     
     gesture_recognition_node = Node(
-        package='gesturebot_vision',
+        package='gesturebot',
         executable='gesture_recognition_node.py',
         name='gesture_recognition_node',
         parameters=[{
@@ -111,7 +168,7 @@ def generate_launch_description():
     )
     
     hand_landmarks_node = Node(
-        package='gesturebot_vision',
+        package='gesturebot',
         executable='hand_landmarks_node.py',
         name='hand_landmarks_node',
         parameters=[{
@@ -126,7 +183,7 @@ def generate_launch_description():
     )
     
     pose_landmarks_node = Node(
-        package='gesturebot_vision',
+        package='gesturebot',
         executable='pose_landmarks_node.py',
         name='pose_landmarks_node',
         parameters=[{
@@ -141,7 +198,7 @@ def generate_launch_description():
     )
     
     face_detection_node = Node(
-        package='gesturebot_vision',
+        package='gesturebot',
         executable='face_detection_node.py',
         name='face_detection_node',
         parameters=[{
@@ -154,7 +211,7 @@ def generate_launch_description():
     )
     
     ball_tracking_node = Node(
-        package='gesturebot_vision',
+        package='gesturebot',
         executable='ball_tracking_node.py',
         name='ball_tracking_node',
         parameters=[{
@@ -171,7 +228,7 @@ def generate_launch_description():
     
     # Performance monitoring node
     performance_monitor_node = Node(
-        package='gesturebot_vision',
+        package='gesturebot',
         executable='performance_monitor_node.py',
         name='performance_monitor_node',
         parameters=[{
@@ -186,7 +243,7 @@ def generate_launch_description():
     
     # Navigation bridge node
     navigation_bridge_node = Node(
-        package='gesturebot_vision',
+        package='gesturebot',
         executable='gesture_navigation_bridge.py',
         name='gesture_navigation_bridge',
         parameters=[{
@@ -202,6 +259,7 @@ def generate_launch_description():
     
     # Group all vision nodes
     vision_group = GroupAction([
+        camera_container,
         object_detection_node,
         gesture_recognition_node,
         hand_landmarks_node,
@@ -223,8 +281,12 @@ def generate_launch_description():
         declare_performance_monitor,
         declare_camera_source,
         declare_debug_mode,
+        declare_publish_annotated,
+        declare_enable_camera,
+        declare_camera_id,
+        declare_camera_format,
         declare_navigation_bridge,
-        
+
         # Vision system nodes
         vision_group
     ])

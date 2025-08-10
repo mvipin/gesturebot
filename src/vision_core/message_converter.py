@@ -21,28 +21,96 @@ class MessageConverter:
     @staticmethod
     def mediapipe_detection_to_ros(detection, class_names: Dict[int, str]) -> DetectedObject:
         """Convert MediaPipe detection to ROS DetectedObject message."""
+        # Create message with explicit field initialization
         msg = DetectedObject()
-        
-        # Get the best category
-        if detection.categories:
-            best_category = detection.categories[0]
-            msg.class_name = best_category.category_name
-            msg.class_id = best_category.index if hasattr(best_category, 'index') else -1
-            msg.confidence = best_category.score
-        
-        # Bounding box
-        if hasattr(detection, 'bounding_box'):
-            bbox = detection.bounding_box
-            msg.bbox_x = bbox.origin_x
-            msg.bbox_y = bbox.origin_y
-            msg.bbox_width = bbox.width
-            msg.bbox_height = bbox.height
-        
-        # Default values for optional fields
+
+        # Initialize all fields with default values first
+        msg.class_name = "unknown"
+        msg.class_id = -1
+        msg.bbox_x = 0
+        msg.bbox_y = 0
+        msg.bbox_width = 0
+        msg.bbox_height = 0
         msg.has_3d_position = False
         msg.track_id = -1
         msg.is_tracked = False
-        
+
+        # Initialize confidence - try multiple approaches
+        try:
+            msg.confidence = 0.0
+        except:
+            # If property assignment fails, try direct attribute access
+            object.__setattr__(msg, 'confidence', 0.0)
+
+        try:
+            # Get the best category
+            if detection.categories and len(detection.categories) > 0:
+                best_category = detection.categories[0]
+
+                # Set class name with None check
+                if hasattr(best_category, 'category_name') and best_category.category_name is not None:
+                    msg.class_name = str(best_category.category_name)
+
+                # Set class ID with None check
+                if hasattr(best_category, 'index') and best_category.index is not None:
+                    try:
+                        msg.class_id = int(best_category.index)
+                    except (TypeError, ValueError):
+                        msg.class_id = -1  # Keep default
+
+                # Handle confidence score with robust None checking
+                if hasattr(best_category, 'score') and best_category.score is not None:
+                    try:
+                        score_val = best_category.score
+                        # Ensure score_val is not None before conversion
+                        if score_val is not None:
+                            confidence_val = float(score_val)
+                            # Try multiple assignment approaches
+                            try:
+                                msg.confidence = confidence_val
+                            except:
+                                object.__setattr__(msg, 'confidence', confidence_val)
+                        else:
+                            # Score exists but is None
+                            try:
+                                msg.confidence = 0.0
+                            except:
+                                object.__setattr__(msg, 'confidence', 0.0)
+                    except (TypeError, ValueError, AttributeError):
+                        try:
+                            msg.confidence = 0.0
+                        except:
+                            object.__setattr__(msg, 'confidence', 0.0)
+
+            # Bounding box with robust None handling
+            if hasattr(detection, 'bounding_box') and detection.bounding_box is not None:
+                bbox = detection.bounding_box
+                try:
+                    # Check for None values before conversion
+                    origin_x = getattr(bbox, 'origin_x', None)
+                    origin_y = getattr(bbox, 'origin_y', None)
+                    width = getattr(bbox, 'width', None)
+                    height = getattr(bbox, 'height', None)
+
+                    msg.bbox_x = int(origin_x) if origin_x is not None else 0
+                    msg.bbox_y = int(origin_y) if origin_y is not None else 0
+                    msg.bbox_width = int(width) if width is not None else 0
+                    msg.bbox_height = int(height) if height is not None else 0
+                except (TypeError, ValueError, AttributeError):
+                    pass  # Keep default values
+
+        except Exception as e:
+            # More detailed error logging for debugging
+            import traceback
+            print(f"Error in MediaPipe detection conversion: {e}")
+            print(f"Detection object type: {type(detection)}")
+            if hasattr(detection, 'categories'):
+                print(f"Categories: {detection.categories}")
+            if hasattr(detection, 'bounding_box'):
+                print(f"Bounding box: {detection.bounding_box}")
+            print(f"Traceback: {traceback.format_exc()}")
+            # Keep default values already set
+
         return msg
     
     @staticmethod
