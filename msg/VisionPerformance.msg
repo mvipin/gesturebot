@@ -1,19 +1,18 @@
-# Performance metrics for vision processing nodes
+# Vision pipeline performance metrics for optimization analysis
 
 std_msgs/Header header
 
-# Feature identification
+# Node identification
 string feature_name
-bool enabled
-int32 priority
 
-# Processing statistics
-int64 frames_processed
-float64 avg_processing_time    # milliseconds
-float64 current_fps
-float64 cpu_usage             # percentage
-float64 memory_usage          # MB
+# Frame processing counts (for the measurement period)
+int32 frames_processed_period     # Frames processed in this 5-second period
+float32 current_fps              # Effective frames per second
 
-# System health indicators
-bool processing_healthy
-string status_message
+# Pipeline stage timing (milliseconds, averaged over measurement period)
+float32 avg_preprocessing_time   # ROS message → MediaPipe submission
+float32 avg_mediapipe_time      # MediaPipe processing duration
+float32 avg_postprocessing_time # MediaPipe callback → ROS publishing
+
+# Total pipeline timing
+float32 avg_total_pipeline_time # Sum of all pipeline stages

@@ -99,7 +99,13 @@ def generate_launch_description():
         default_value='true',
         description='Enable buffered logging system. When false, disables all buffering and only logs critical errors directly.'
     )
-    
+
+    declare_enable_performance_tracking = DeclareLaunchArgument(
+        'enable_performance_tracking',
+        default_value='false',
+        description='Enable performance tracking and publishing to /vision/performance topic. When true, publishes detailed pipeline timing metrics every 5 seconds.'
+    )
+
     # ========================================
     # CAMERA NODE (High-Performance Configuration)
     # ========================================
@@ -152,6 +158,7 @@ def generate_launch_description():
             'debug_mode': LaunchConfiguration('debug_mode'),
             'unlimited_buffer_mode': LaunchConfiguration('unlimited_buffer_mode'),
             'buffer_logging_enabled': LaunchConfiguration('buffer_logging_enabled'),
+            'enable_performance_tracking': LaunchConfiguration('enable_performance_tracking'),
         }],
         condition=IfCondition(LaunchConfiguration('enable_object_detection')),
         output='screen'
@@ -186,6 +193,7 @@ def generate_launch_description():
         declare_debug_mode,
         declare_unlimited_buffer_mode,
         declare_buffer_logging_enabled,
+        declare_enable_performance_tracking,
 
         # Object detection system nodes
         object_detection_group

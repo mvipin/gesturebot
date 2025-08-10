@@ -140,18 +140,81 @@ class ProcessingConfig:
     frame_skip: int = 1
     confidence_threshold: float = 0.5
     max_results: int = 5
-    priority: int = 1  # 0=critical, 1=high, 2=medium, 3=low
+    priority: int = 1  # 0
+
+
+class PipelineTimer:
+    """High-precision timing tracker for the three main vision pipeline stages."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        """Reset all timing measurements."""
+        self.frame_start_time = 0.0
+        self.preprocessing_start_time = 0.0
+        self.mediapipe_start_time = 0.0
+        self.postprocessing_start_time = 0.0
+        self.frame_end_time = 0.0
+
+        # Stage durations (in milliseconds)
+        self.preprocessing_duration = 0.0
+        self.mediapipe_duration = 0.0
+        self.postprocessing_duration = 0.0
+        self.total_duration = 0.0
+
+    def start_frame(self):
+        """Mark the start of frame processing (beginning of preprocessing)."""
+        self.frame_start_time = time.perf_counter()
+        self.preprocessing_start_time = self.frame_start_time
+
+    def mark_mediapipe_start(self):
+        """Mark the transition to MediaPipe processing."""
+        current_time = time.perf_counter()
+        self.preprocessing_duration = (current_time - self.preprocessing_start_time) * 1000
+        self.mediapipe_start_time = current_time
+
+    def mark_postprocessing_start(self):
+        """Mark the start of post-processing (MediaPipe callback received)."""
+        current_time = time.perf_counter()
+        self.mediapipe_duration = (current_time - self.mediapipe_start_time) * 1000
+        self.postprocessing_start_time = current_time
+
+    def end_frame(self):
+        """Mark the end of frame processing."""
+        self.frame_end_time = time.perf_counter()
+        self.postprocessing_duration = (self.frame_end_time - self.postprocessing_start_time) * 1000
+        self.total_duration = (self.frame_end_time - self.frame_start_time) * 1000
+
+    def get_summary(self) -> Dict[str, float]:
+        """Get timing summary for this frame."""
+        return {
+            'preprocessing_ms': self.preprocessing_duration,
+            'mediapipe_ms': self.mediapipe_duration,
+            'postprocessing_ms': self.postprocessing_duration,
+            'total_ms': self.total_duration
+        }
 
 
 @dataclass
 class PerformanceStats:
-    """Performance statistics for monitoring."""
+    """Performance statistics for pipeline timing analysis."""
+    # Frame counters
     frames_processed: int = 0
-    avg_processing_time: float = 0.0
+    frames_processed_period: int = 0  # Frames processed in current 5-second period
+
+    # Overall timing
     current_fps: float = 0.0
-    cpu_usage: float = 0.0
-    memory_usage: float = 0.0
+
+    # Pipeline stage timing (in milliseconds, averaged over measurement period)
+    avg_preprocessing_time: float = 0.0      # ROS message → MediaPipe submission
+    avg_mediapipe_time: float = 0.0          # MediaPipe processing duration
+    avg_postprocessing_time: float = 0.0     # MediaPipe callback → ROS publishing
+    avg_total_pipeline_time: float = 0.0     # Sum of all pipeline stages
+
+    # Timing metadata
     last_update: float = 0.0
+    period_start_time: float = 0.0
 
 
 class MediaPipeBaseNode(Node, ABC):
@@ -162,7 +225,8 @@ class MediaPipeBaseNode(Node, ABC):
     """
 
     def __init__(self, node_name: str, feature_name: str, config: ProcessingConfig,
-                 enable_buffered_logging: bool = True, unlimited_buffer_mode: bool = False):
+                 enable_buffered_logging: bool = True, unlimited_buffer_mode: bool = False,
+                 enable_performance_tracking: bool = False):
         super().__init__(node_name)
 
         self.feature_name = feature_name
@@ -175,9 +239,23 @@ class MediaPipeBaseNode(Node, ABC):
             unlimited_mode=unlimited_buffer_mode,
             enabled=enable_buffered_logging
         )
-        
-        # Performance tracking
-        self.stats = PerformanceStats()
+
+        # Performance tracking control
+        self.enable_performance_tracking = enable_performance_tracking
+
+        # Performance tracking (only if enabled)
+        if self.enable_performance_tracking:
+            self.stats = PerformanceStats()
+            self.stats.period_start_time = time.perf_counter()
+            self.pipeline_timer = PipelineTimer()
+            self.timing_history = []  # Store recent timing measurements
+            self.max_timing_history = 20  # Keep last 20 frame timings for 5-second averages
+        else:
+            self.stats = None
+            self.pipeline_timer = None
+            self.timing_history = []
+
+        # Legacy performance tracking for compatibility
         self.processing_times = []
         self.frame_counter = 0
         self.last_fps_time = time.time()
@@ -213,7 +291,7 @@ class MediaPipeBaseNode(Node, ABC):
         # Publishers
         self.performance_publisher = self.create_publisher(
             VisionPerformance,
-            f'/vision/{self.feature_name}/performance',
+            '/vision/performance',
             self.result_qos
         )
         
@@ -248,23 +326,26 @@ class MediaPipeBaseNode(Node, ABC):
         pass
     
     def image_callback(self, msg: Image) -> None:
-        """Handle incoming camera frames."""
+        """Handle incoming camera frames with pipeline timing."""
         if not self.config.enabled:
             return
+
+        # Start timing for this frame (only if performance tracking enabled)
+        if self.enable_performance_tracking and self.pipeline_timer:
+            self.pipeline_timer.start_frame()
 
         # Frame skipping for performance
         self.frame_counter += 1
         if self.frame_counter % (self.config.frame_skip + 1) != 0:
             return
 
-
-
         try:
-            # Convert ROS image to OpenCV
+            # Convert ROS image to OpenCV (preprocessing stage includes this conversion)
             cv_image = self.cv_bridge.imgmsg_to_cv2(msg, 'bgr8')
             timestamp = time.time()
 
             # Process frame asynchronously to avoid blocking
+            # Note: This creates a reference copy for threading safety (Copy #3)
             threading.Thread(
                 target=self._process_frame_async,
                 args=(cv_image, timestamp),
@@ -275,66 +356,126 @@ class MediaPipeBaseNode(Node, ABC):
             self.get_logger().error(f'[{self.feature_name}] Error in image callback: {e}')
     
     def _process_frame_async(self, frame: np.ndarray, timestamp: float) -> None:
-        """Process frame in separate thread."""
+        """Process frame in separate thread with detailed timing."""
         if not self.processing_lock.acquire(blocking=False):
             # Skip frame if still processing previous one
+            self.stats.frames_skipped += 1
             return
 
         try:
-            start_time = time.time()
+            start_time = time.perf_counter()
 
-            # Call subclass implementation
+            # Enhanced timing (only if performance tracking enabled)
+            if self.enable_performance_tracking and self.pipeline_timer:
+                self.pipeline_timer.mark_mediapipe_start()
+
+            # Call subclass implementation (includes MediaPipe processing)
             results = self.process_frame(frame, timestamp)
 
-            # Track performance
-            processing_time = (time.time() - start_time) * 1000  # ms
-            self._update_performance_stats(processing_time)
+            # Mark post-processing start (only if performance tracking enabled)
+            if self.enable_performance_tracking and self.pipeline_timer:
+                self.pipeline_timer.mark_postprocessing_start()
 
             # Publish results
             if results is not None:
                 self.publish_results(results, timestamp)
                 self.latest_results = results
 
+                # Update frame counters (only if performance tracking enabled)
+                if self.enable_performance_tracking and self.stats:
+                    self.stats.frames_processed += 1
+
+            # End frame timing and update statistics (only if performance tracking enabled)
+            if self.enable_performance_tracking and self.pipeline_timer:
+                self.pipeline_timer.end_frame()
+                timing_summary = self.pipeline_timer.get_summary()
+                self._update_enhanced_performance_stats(timing_summary)
+
+            # Track legacy performance for compatibility
+            processing_time = (time.perf_counter() - start_time) * 1000  # ms
+            self._update_performance_stats(processing_time)
+
         except Exception as e:
             self.get_logger().error(f'[{self.feature_name}] Error processing frame: {e}')
         finally:
             self.processing_lock.release()
+            # Reset timer for next frame (only if performance tracking enabled)
+            if self.enable_performance_tracking and self.pipeline_timer:
+                self.pipeline_timer.reset()
     
+    def _update_enhanced_performance_stats(self, timing_summary: Dict[str, float]) -> None:
+        """Update enhanced performance statistics with pipeline timing."""
+        if not self.enable_performance_tracking or self.stats is None:
+            return
+
+        # Store timing history for rolling averages
+        self.timing_history.append(timing_summary)
+        if len(self.timing_history) > self.max_timing_history:
+            self.timing_history.pop(0)
+
+        # Update period frame count
+        self.stats.frames_processed_period += 1
+
+        # Calculate running averages for pipeline stages (last 20 frames)
+        if self.timing_history:
+            recent_timings = self.timing_history
+
+            self.stats.avg_preprocessing_time = np.mean([t['preprocessing_ms'] for t in recent_timings])
+            self.stats.avg_mediapipe_time = np.mean([t['mediapipe_ms'] for t in recent_timings])
+            self.stats.avg_postprocessing_time = np.mean([t['postprocessing_ms'] for t in recent_timings])
+            self.stats.avg_total_pipeline_time = np.mean([t['total_ms'] for t in recent_timings])
+
+            # Calculate effective FPS based on recent processing
+            current_time = time.perf_counter()
+            period_duration = current_time - self.stats.period_start_time
+            if period_duration > 0:
+                self.stats.current_fps = self.stats.frames_processed_period / period_duration
+
     def _update_performance_stats(self, processing_time: float) -> None:
-        """Update performance statistics."""
+        """Update legacy performance statistics for compatibility."""
         self.processing_times.append(processing_time)
         if len(self.processing_times) > 100:
             self.processing_times.pop(0)
-        
-        self.stats.frames_processed += 1
-        self.stats.avg_processing_time = np.mean(self.processing_times)
-        
-        # Calculate FPS
-        current_time = time.time()
-        if current_time - self.last_fps_time >= 1.0:
-            frames_in_period = len([t for t in self.processing_times 
-                                  if current_time - t/1000 <= 1.0])
-            self.stats.current_fps = frames_in_period
-            self.last_fps_time = current_time
+
+        # Only update legacy stats if performance tracking is disabled
+        if not self.enable_performance_tracking:
+            # Calculate FPS for legacy compatibility
+            current_time = time.time()
+            if current_time - self.last_fps_time >= 1.0:
+                frames_in_period = len([t for t in self.processing_times
+                                      if current_time - t/1000 <= 1.0])
+                self.last_fps_time = current_time
     
     def publish_performance_stats(self) -> None:
-        """Publish performance statistics."""
+        """Publish performance statistics (only if performance tracking is enabled)."""
+        if not self.enable_performance_tracking or self.stats is None:
+            return
+
         try:
             msg = VisionPerformance()
             msg.header.stamp = self.get_clock().now().to_msg()
+            msg.header.frame_id = 'base_link'
             msg.feature_name = str(self.feature_name)
-            msg.frames_processed = int(self.stats.frames_processed)
-            msg.avg_processing_time = float(self.stats.avg_processing_time)
+
+            # Frame processing counts for this period
+            msg.frames_processed_period = int(self.stats.frames_processed_period)
             msg.current_fps = float(self.stats.current_fps)
-            msg.cpu_usage = float(self.stats.cpu_usage)
-            msg.memory_usage = float(self.stats.memory_usage)
-            msg.enabled = bool(self.config.enabled)
-            msg.priority = int(self.config.priority)
-            msg.processing_healthy = bool(self.stats.avg_processing_time < 200.0)  # 200ms threshold
-            msg.status_message = str("operational" if msg.processing_healthy else "degraded")
+
+            # Pipeline stage timing (averaged over measurement period)
+            msg.avg_preprocessing_time = float(self.stats.avg_preprocessing_time)
+            msg.avg_mediapipe_time = float(self.stats.avg_mediapipe_time)
+            msg.avg_postprocessing_time = float(self.stats.avg_postprocessing_time)
+            msg.avg_total_pipeline_time = float(self.stats.avg_total_pipeline_time)
 
             self.performance_publisher.publish(msg)
-            self.get_logger().debug(f'Published performance stats for {self.feature_name}')
+
+            # Reset period counters
+            self.stats.frames_processed_period = 0
+            self.stats.period_start_time = time.perf_counter()
+
+            self.get_logger().debug(f'Published performance stats for {self.feature_name}: '
+                                  f'FPS={msg.current_fps:.1f}, '
+                                  f'Pipeline={msg.avg_total_pipeline_time:.1f}ms')
 
         except Exception as e:
             self.get_logger().error(f'Error publishing performance stats: {e}')

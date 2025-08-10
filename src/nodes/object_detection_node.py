@@ -18,7 +18,7 @@ from mediapipe.tasks.python import vision as mp_vis
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
-from vision_core.base_node import MediaPipeBaseNode, ProcessingConfig, MediaPipeCallbackMixin
+from vision_core.base_node import MediaPipeBaseNode, ProcessingConfig, MediaPipeCallbackMixin, PerformanceStats, PipelineTimer
 from vision_core.message_converter import MessageConverter
 from gesturebot.msg import DetectedObjects
 
@@ -49,21 +49,49 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         # Model path (get default before calling parent init)
         self.model_path = self.get_model_path()
 
-        # Initialize parent with default buffered logging (will be updated after parameter declaration)
+        # Initialize parent with default values (will be updated after parameter declaration)
         super().__init__(
             'object_detection_node',
             'object_detection',
             config,
             enable_buffered_logging=True,  # Default, will be updated
-            unlimited_buffer_mode=False    # Default, will be updated
+            unlimited_buffer_mode=False,   # Default, will be updated
+            enable_performance_tracking=False  # Default, will be updated
         )
         MediaPipeCallbackMixin.__init__(self)
 
         # Declare parameters for this node
         self.declare_parameter('unlimited_buffer_mode', False)
         self.declare_parameter('buffer_logging_enabled', True)
+        self.declare_parameter('enable_performance_tracking', False)
 
-        # Note: BufferedLogger is already initialized by parent class with parameter values
+        # Update performance tracking setting from parameter
+        performance_tracking_enabled = self.get_parameter('enable_performance_tracking').get_parameter_value().bool_value
+
+        # Update parent class performance tracking setting
+        self.enable_performance_tracking = performance_tracking_enabled
+
+        # Re-initialize performance tracking components if enabled
+        if self.enable_performance_tracking:
+            self.stats = PerformanceStats()
+            self.stats.period_start_time = time.perf_counter()
+            self.pipeline_timer = PipelineTimer()
+            self.timing_history = []
+            self.max_timing_history = 20
+            self.get_logger().info("Performance tracking enabled")
+        else:
+            self.get_logger().info("Performance tracking disabled")
+
+        # Update buffered logging setting from parameter
+        buffer_logging_enabled = self.get_parameter('buffer_logging_enabled').get_parameter_value().bool_value
+
+        # Update buffered logger enabled state
+        if hasattr(self, 'buffered_logger'):
+            self.buffered_logger.enabled = buffer_logging_enabled
+            if buffer_logging_enabled:
+                self.get_logger().info("Buffered logging enabled")
+            else:
+                self.get_logger().info("Buffered logging disabled - only critical errors will be logged directly")
 
         # Log the buffer configuration (using inherited buffered logger)
         buffer_stats = self.get_buffer_stats()
@@ -166,8 +194,10 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
     def process_frame(self, frame: np.ndarray, timestamp: float) -> Optional[Dict]:
         """Process frame for object detection."""
         try:
-            # Convert BGR to RGB for MediaPipe
+            # Convert BGR to RGB for MediaPipe (preprocessing stage includes this)
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # Create MediaPipe image
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
             # Run detection asynchronously
@@ -267,7 +297,7 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                         cv_image = output_image.numpy_view()
                         self.log_buffered_event(
                             'MEDIAPIPE_TO_NUMPY',
-                            'Converted MediaPipe image to numpy',
+                            'Converted MediaPipe image to numpy view',
                             shape=str(cv_image.shape) if cv_image is not None else "None",
                             success=cv_image is not None
                         )
@@ -296,7 +326,7 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
                         self.log_buffered_event(
                             'COLOR_CONVERSION',
-                            'Converted RGB to BGR',
+                            'Converted RGB to BGR for ROS publishing',
                             final_shape=str(cv_image.shape)
                         )
 
@@ -306,7 +336,7 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                     annotated_msg.header.frame_id = 'camera_frame'
                     self.log_buffered_event(
                         'ROS_MESSAGE_CREATED',
-                        'Created ROS Image message',
+                        'Created ROS Image message for annotated image',
                         width=annotated_msg.width,
                         height=annotated_msg.height,
                         encoding=annotated_msg.encoding
