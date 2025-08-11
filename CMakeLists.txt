@@ -51,6 +51,7 @@ install(PROGRAMS
   src/nodes/object_detection_node.py
   src/nodes/gesture_recognition_node.py
   src/nodes/gesture_navigation_bridge.py
+  src/nodes/image_viewer_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

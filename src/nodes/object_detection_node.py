@@ -52,6 +52,9 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         # Model path will be set after parameter declaration
         self.model_path = None
 
+        # Flag to prevent premature MediaPipe initialization
+        self._mediapipe_initialized = False
+
         # Initialize parent with default values (will be updated after parameter declaration)
         super().__init__(
             'object_detection_node',
@@ -70,14 +73,16 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
 
         # Declare model path parameter with descriptor (if not already declared)
         try:
-            model_path_descriptor = ParameterDescriptor(
-                description='Path to the EfficientDet model file (.tflite). Can be absolute path or relative to package share directory.',
-                additional_constraints='Must be a valid path to a .tflite model file'
-            )
-            self.declare_parameter('model_path', 'models/efficientdet.tflite', model_path_descriptor)
+            # Check if parameter already exists
+            if not self.has_parameter('model_path'):
+                model_path_descriptor = ParameterDescriptor(
+                    description='Path to the EfficientDet model file (.tflite). Can be absolute path or relative to package share directory.',
+                    additional_constraints='Must be a valid path to a .tflite model file'
+                )
+                self.declare_parameter('model_path', 'models/efficientdet.tflite', model_path_descriptor)
         except Exception as e:
             # Parameter may already be declared by launch file or parent class
-            self.get_logger().debug(f"Model path parameter already declared: {e}")
+            self.get_logger().debug(f"Model path parameter handling: {e}")
 
         # Update performance tracking setting from parameter
         performance_tracking_enabled = self.get_parameter('enable_performance_tracking').get_parameter_value().bool_value
@@ -110,15 +115,15 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         # Resolve model path using parameter and resource discovery
         self.model_path = self.resolve_model_path()
 
+        # Now that model path is resolved, initialize MediaPipe
+        if not self.initialize_mediapipe():
+            self.get_logger().error("Failed to initialize MediaPipe - node will not function properly")
+
         # Log the buffer configuration (using inherited buffered logger)
         buffer_stats = self.get_buffer_stats()
         self.get_logger().info(f"BufferedLogger initialized: {buffer_stats}")
 
-        # Parameters (declare after parent init)
-        self.declare_parameter('model_path', str(self.model_path))
-        self.declare_parameter('confidence_threshold', 0.5)
-        self.declare_parameter('max_results', 5)
-        self.declare_parameter('publish_annotated_images', False)
+        # Parameters are declared by launch file, no need to declare again
 
         # Publishers
         self.detections_publisher = self.create_publisher(
@@ -131,7 +136,13 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         self.annotated_image_publisher = None
         # Note: cv_bridge is already initialized in the base class
 
-        if self.get_parameter('publish_annotated_images').value:
+        # Check if annotated image publishing is enabled (with fallback)
+        try:
+            publish_annotated = self.get_parameter('publish_annotated_images').value
+        except:
+            publish_annotated = True  # Default to enabled for backward compatibility
+
+        if publish_annotated:
             self.annotated_image_publisher = self.create_publisher(
                 Image,
                 '/vision/objects/annotated',
@@ -220,12 +231,18 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
     
     def initialize_mediapipe(self) -> bool:
         """Initialize MediaPipe object detector."""
+        # Prevent initialization if called too early (from parent constructor)
+        if self.model_path is None:
+            self.get_logger().debug("MediaPipe initialization deferred - model path not yet resolved")
+            return True  # Return True to avoid error, will initialize later
+
+        # Prevent double initialization
+        if self._mediapipe_initialized:
+            return True
+
         try:
             # Use the resolved model path
             model_path = self.model_path
-            if model_path is None:
-                # Fallback: try to resolve model path if not set
-                model_path = self.resolve_model_path()
             
             if not model_path.exists():
                 self.get_logger().error(f'Model file not found: {model_path}')
@@ -254,7 +271,8 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             )
             
             self.detector = mp_vis.ObjectDetector.create_from_options(options)
-            
+
+            self._mediapipe_initialized = True
             self.get_logger().info('MediaPipe object detector initialized successfully')
             return True
             
@@ -306,23 +324,16 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                     result_dict = {
                         'detections': detections,
                         'timestamp': timestamp,
-                        'processing_time': (time.time() - timestamp) * 1000
+                        'processing_time': (time.time() - timestamp) * 1000,
+                        'rgb_frame': rgb_frame  # Include original RGB frame for manual annotation
                     }
 
-                    # Include output_image if available (for annotated image publishing)
-                    if 'output_image' in callback_results:
-                        result_dict['output_image'] = callback_results['output_image']
-                        self.log_buffered_event(
-                            'OUTPUT_IMAGE_RECEIVED',
-                            'MediaPipe output image included in results',
-                            image_valid=callback_results["output_image"] is not None,
-                            image_type=type(callback_results["output_image"]).__name__
-                        )
-                    else:
-                        self.log_buffered_event(
-                            'OUTPUT_IMAGE_MISSING',
-                            'No output_image in callback_results'
-                        )
+                    self.log_buffered_event(
+                        'RESULT_DICT_CREATED',
+                        'Created result dictionary with RGB frame for manual annotation',
+                        detections_count=len(detections),
+                        rgb_frame_shape=str(rgb_frame.shape)
+                    )
 
                     return result_dict
                 else:
@@ -335,7 +346,92 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         except Exception as e:
             self.get_logger().error(f'Error processing frame: {e}')
             return None
-    
+
+    def draw_manual_annotations(self, image: np.ndarray, detections) -> np.ndarray:
+        """
+        Manually draw bounding boxes, labels, and confidence scores on the image using OpenCV.
+
+        Args:
+            image: RGB image array (H, W, 3)
+            detections: MediaPipe detection results
+
+        Returns:
+            Annotated RGB image array
+        """
+        if not detections:
+            return image.copy()
+
+        annotated_image = image.copy()
+        height, width = image.shape[:2]
+
+        for detection in detections:
+            # Get bounding box coordinates
+            bbox = detection.bounding_box
+            x_min = int(bbox.origin_x)
+            y_min = int(bbox.origin_y)
+            x_max = int(bbox.origin_x + bbox.width)
+            y_max = int(bbox.origin_y + bbox.height)
+
+            # Ensure coordinates are within image bounds
+            x_min = max(0, min(x_min, width - 1))
+            y_min = max(0, min(y_min, height - 1))
+            x_max = max(0, min(x_max, width - 1))
+            y_max = max(0, min(y_max, height - 1))
+
+            # Get the best category (highest confidence)
+            if detection.categories:
+                best_category = max(detection.categories, key=lambda c: c.score if c.score else 0)
+                class_name = best_category.category_name or 'unknown'
+                confidence = best_category.score or 0.0
+
+                # Color-coded boxes based on confidence levels
+                if confidence >= 0.7:
+                    color = (0, 255, 0)  # Green for high confidence (RGB)
+                elif confidence >= 0.5:
+                    color = (255, 255, 0)  # Yellow for medium confidence (RGB)
+                else:
+                    color = (255, 0, 0)  # Red for low confidence (RGB)
+
+                # Draw bounding box rectangle
+                cv2.rectangle(annotated_image, (x_min, y_min), (x_max, y_max), color, 2)
+
+                # Prepare label text with confidence percentage
+                confidence_percent = int(confidence * 100)
+                label = f"{class_name}: {confidence_percent}%"
+
+                # Calculate text size for background rectangle
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                font_scale = 0.6
+                thickness = 2
+                (text_width, text_height), baseline = cv2.getTextSize(label, font, font_scale, thickness)
+
+                # Position text above bounding box, or below if not enough space
+                text_x = x_min
+                text_y = y_min - 10 if y_min - 10 > text_height else y_max + text_height + 10
+
+                # Draw background rectangle for text (filled)
+                cv2.rectangle(
+                    annotated_image,
+                    (text_x, text_y - text_height - baseline),
+                    (text_x + text_width, text_y + baseline),
+                    color,
+                    -1  # Filled rectangle
+                )
+
+                # Draw text label in black for good contrast
+                cv2.putText(
+                    annotated_image,
+                    label,
+                    (text_x, text_y),
+                    font,
+                    font_scale,
+                    (0, 0, 0),  # Black text (RGB)
+                    thickness,
+                    cv2.LINE_AA
+                )
+
+        return annotated_image
+
     def publish_results(self, results: Dict, timestamp: float) -> None:
         """Publish object detection results and optionally annotated images."""
         try:
@@ -355,8 +451,8 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
 
             # Conditional annotated image publishing (Optimization: Check subscriber count first)
             if (self.annotated_image_publisher is not None and
-                'output_image' in results and
-                results['output_image'] is not None):
+                'rgb_frame' in results and
+                results['rgb_frame'] is not None):
 
                 # Optimization: Skip expensive postprocessing if no subscribers
                 subscriber_count = self.annotated_image_publisher.get_subscription_count()
@@ -365,8 +461,8 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                     'PUBLISH_CONDITIONS_CHECK',
                     'Checking annotated image publishing conditions',
                     publisher_exists=self.annotated_image_publisher is not None,
-                    output_image_in_results="output_image" in results,
-                    output_image_not_none=results.get("output_image") is not None,
+                    rgb_frame_available='rgb_frame' in results,
+                    detections_available=len(results.get('detections', [])) > 0,
                     subscriber_count=subscriber_count
                 )
 
@@ -388,63 +484,35 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 try:
                     self.log_buffered_event(
                         'IMAGE_PROCESSING_START',
-                        'Starting annotated image processing'
+                        'Starting manual annotation processing'
                     )
 
-                    output_image = results['output_image']
+                    # Extract the original RGB frame and detections for manual annotation
+                    rgb_frame = results['rgb_frame']
+                    detections = results['detections']
                     self.log_buffered_event(
-                        'OUTPUT_IMAGE_TYPE',
-                        'Retrieved output image from results',
-                        image_type=type(output_image).__name__
+                        'RGB_FRAME_RECEIVED',
+                        'Using original RGB frame for manual annotation',
+                        frame_shape=str(rgb_frame.shape),
+                        detections_count=len(detections)
                     )
 
-                    # Convert MediaPipe image to OpenCV format
-                    if hasattr(output_image, 'numpy_view'):
-                        # MediaPipe Image object
-                        cv_image = output_image.numpy_view()
-                        self.log_buffered_event(
-                            'MEDIAPIPE_TO_NUMPY',
-                            'Converted MediaPipe image to numpy view',
-                            shape=str(cv_image.shape) if cv_image is not None else "None",
-                            success=cv_image is not None
-                        )
-                    else:
-                        # Already numpy array
-                        cv_image = np.array(output_image)
-                        self.log_buffered_event(
-                            'ARRAY_CONVERSION',
-                            'Converted to numpy array',
-                            shape=str(cv_image.shape) if cv_image is not None else "None",
-                            success=cv_image is not None
-                        )
+                    # Apply manual annotations using OpenCV drawing primitives
+                    annotated_rgb = self.draw_manual_annotations(rgb_frame, detections)
+                    self.log_buffered_event(
+                        'MANUAL_ANNOTATION_APPLIED',
+                        'Applied manual bounding boxes and labels',
+                        detections_count=len(detections),
+                        annotated_shape=str(annotated_rgb.shape)
+                    )
 
-                    # Ensure we have a valid image
-                    if cv_image is None or cv_image.size == 0:
-                        self.log_buffered_event(
-                            'IMAGE_VALIDATION_FAILED',
-                            'Empty or invalid annotated image, skipping publish',
-                            image_none=cv_image is None,
-                            image_size=cv_image.size if cv_image is not None else 0
-                        )
-                        return
-
-                    # Optimization: Smart color conversion based on camera format
-                    if len(cv_image.shape) == 3 and cv_image.shape[2] == 3:
-                        # When camera_format=RGB888, MediaPipe outputs RGB, need to convert to BGR for ROS
-                        # When camera_format=YUYV (BGR), MediaPipe outputs RGB, need to convert to BGR for ROS
-                        # In both cases, we need RGB→BGR conversion for ROS publishing
-                        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
-                        self.log_buffered_event(
-                            'COLOR_CONVERSION_RGB2BGR',
-                            'Applied RGB to BGR conversion for ROS publishing',
-                            final_shape=str(cv_image.shape)
-                        )
-                    else:
-                        self.log_buffered_event(
-                            'COLOR_CONVERSION_SKIPPED',
-                            'Skipping color conversion - unexpected image format',
-                            final_shape=str(cv_image.shape)
-                        )
+                    # Convert RGB to BGR for ROS publishing
+                    cv_image = cv2.cvtColor(annotated_rgb, cv2.COLOR_RGB2BGR)
+                    self.log_buffered_event(
+                        'COLOR_CONVERSION_RGB2BGR',
+                        'Applied RGB to BGR conversion for ROS publishing',
+                        final_shape=str(cv_image.shape)
+                    )
 
                     # Convert to ROS Image message
                     annotated_msg = self.cv_bridge.cv2_to_imgmsg(cv_image, encoding='bgr8')
