@@ -265,18 +265,37 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             # Publish detection results
             self.detections_publisher.publish(msg)
 
-            # Conditional annotated image publishing
-            self.log_buffered_event(
-                'PUBLISH_CONDITIONS_CHECK',
-                'Checking annotated image publishing conditions',
-                publisher_exists=self.annotated_image_publisher is not None,
-                output_image_in_results="output_image" in results,
-                output_image_not_none=results.get("output_image") is not None
-            )
-
+            # Conditional annotated image publishing (Optimization: Check subscriber count first)
             if (self.annotated_image_publisher is not None and
                 'output_image' in results and
                 results['output_image'] is not None):
+
+                # Optimization: Skip expensive postprocessing if no subscribers
+                subscriber_count = self.annotated_image_publisher.get_subscription_count()
+
+                self.log_buffered_event(
+                    'PUBLISH_CONDITIONS_CHECK',
+                    'Checking annotated image publishing conditions',
+                    publisher_exists=self.annotated_image_publisher is not None,
+                    output_image_in_results="output_image" in results,
+                    output_image_not_none=results.get("output_image") is not None,
+                    subscriber_count=subscriber_count
+                )
+
+                if subscriber_count == 0:
+                    self.log_buffered_event(
+                        'ANNOTATED_PROCESSING_SKIPPED',
+                        'Skipping annotated image processing - no subscribers',
+                        subscriber_count=subscriber_count
+                    )
+                    return
+
+                # Continue with annotated image processing (subscribers present)
+                self.log_buffered_event(
+                    'ANNOTATED_PROCESSING_CONTINUE',
+                    'Continuing with annotated image processing - subscribers present',
+                    subscriber_count=subscriber_count
+                )
 
                 try:
                     self.log_buffered_event(
