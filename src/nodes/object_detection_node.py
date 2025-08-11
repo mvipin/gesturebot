@@ -5,6 +5,7 @@ Enhanced MediaPipe object detection with navigation integration.
 """
 
 import time
+import os
 from typing import Dict, Any, Optional
 from pathlib import Path
 # Removed deque, threading, datetime imports - now using BufferedLogger from base_node
@@ -17,6 +18,8 @@ from mediapipe.tasks.python import vision as mp_vis
 
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
+from rcl_interfaces.msg import ParameterDescriptor
 
 from vision_core.base_node import MediaPipeBaseNode, ProcessingConfig, MediaPipeCallbackMixin, PerformanceStats, PipelineTimer
 from vision_core.message_converter import MessageConverter
@@ -46,8 +49,8 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         # MediaPipe components
         self.detector = None
 
-        # Model path (get default before calling parent init)
-        self.model_path = self.get_model_path()
+        # Model path will be set after parameter declaration
+        self.model_path = None
 
         # Initialize parent with default values (will be updated after parameter declaration)
         super().__init__(
@@ -64,6 +67,17 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         self.declare_parameter('unlimited_buffer_mode', False)
         self.declare_parameter('buffer_logging_enabled', True)
         self.declare_parameter('enable_performance_tracking', False)
+
+        # Declare model path parameter with descriptor (if not already declared)
+        try:
+            model_path_descriptor = ParameterDescriptor(
+                description='Path to the EfficientDet model file (.tflite). Can be absolute path or relative to package share directory.',
+                additional_constraints='Must be a valid path to a .tflite model file'
+            )
+            self.declare_parameter('model_path', 'models/efficientdet.tflite', model_path_descriptor)
+        except Exception as e:
+            # Parameter may already be declared by launch file or parent class
+            self.get_logger().debug(f"Model path parameter already declared: {e}")
 
         # Update performance tracking setting from parameter
         performance_tracking_enabled = self.get_parameter('enable_performance_tracking').get_parameter_value().bool_value
@@ -92,6 +106,9 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 self.get_logger().info("Buffered logging enabled")
             else:
                 self.get_logger().info("Buffered logging disabled - only critical errors will be logged directly")
+
+        # Resolve model path using parameter and resource discovery
+        self.model_path = self.resolve_model_path()
 
         # Log the buffer configuration (using inherited buffered logger)
         buffer_stats = self.get_buffer_stats()
@@ -126,35 +143,89 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
 
         self.get_logger().info('Object Detection Node initialized')
     
-    def get_model_path(self) -> Path:
-        """Get the path to the EfficientDet model."""
-        # Try multiple possible locations
-        possible_paths = [
-            # Installed location (preferred)
-            Path('/home/pi/GestureBot/gesturebot_ws/install/gesturebot/share/gesturebot/models/efficientdet.tflite'),
+    def resolve_model_path(self) -> Path:
+        """
+        Resolve the model path using ROS 2 resource discovery and parameters.
+
+        Returns:
+            Path: Resolved path to the model file
+
+        Raises:
+            FileNotFoundError: If model file cannot be found in any location
+        """
+        # Get model path parameter
+        model_path_param = self.get_parameter('model_path').get_parameter_value().string_value
+
+        # If absolute path is provided, use it directly
+        if os.path.isabs(model_path_param):
+            model_path = Path(model_path_param)
+            if model_path.exists():
+                self.get_logger().info(f"Using absolute model path: {model_path}")
+                return model_path
+            else:
+                self.get_logger().warn(f"Absolute model path does not exist: {model_path}")
+
+        # Try to resolve relative path using package resource discovery
+        try:
+            package_share_dir = get_package_share_directory('gesturebot')
+            package_model_path = Path(package_share_dir) / model_path_param
+            if package_model_path.exists():
+                self.get_logger().info(f"Using package model path: {package_model_path}")
+                return package_model_path
+            else:
+                self.get_logger().warn(f"Package model path does not exist: {package_model_path}")
+        except PackageNotFoundError:
+            self.get_logger().warn("Package 'gesturebot' not found in ament index")
+
+        # Fallback locations for development and alternative installations
+        fallback_paths = [
             # Source location (development)
             Path(__file__).parent.parent.parent / 'models' / 'efficientdet.tflite',
-            # Alternative locations
+            # Alternative package locations
+            Path('/opt/ros/jazzy/share/gesturebot') / model_path_param,
+            # Legacy locations for backward compatibility
             Path.home() / 'GestureBot' / 'mediapipe-test' / 'efficientdet.tflite',
-            Path('/opt/ros/jazzy/share/gesturebot/models/efficientdet.tflite'),
+            # Current working directory
+            Path.cwd() / model_path_param,
         ]
 
-        for path in possible_paths:
+        for path in fallback_paths:
             if path.exists():
+                self.get_logger().info(f"Using fallback model path: {path}")
                 return path
 
-        # Default path (may not exist yet)
-        return Path('/home/pi/GestureBot/gesturebot_ws/install/gesturebot/share/gesturebot/models/efficientdet.tflite')
+        # If no existing path found, return the preferred package path for error reporting
+        try:
+            package_share_dir = get_package_share_directory('gesturebot')
+            preferred_path = Path(package_share_dir) / model_path_param
+        except PackageNotFoundError:
+            preferred_path = Path(model_path_param)
+
+        # Log all attempted paths for debugging
+        attempted_paths = [model_path_param] if os.path.isabs(model_path_param) else []
+        try:
+            attempted_paths.append(str(Path(get_package_share_directory('gesturebot')) / model_path_param))
+        except PackageNotFoundError:
+            pass
+        attempted_paths.extend([str(p) for p in fallback_paths])
+
+        error_msg = f"Model file not found. Attempted paths:\n" + "\n".join(f"  - {p}" for p in attempted_paths)
+        self.get_logger().error(error_msg)
+
+        raise FileNotFoundError(f"Model file not found: {preferred_path}")
+
+    def get_model_path(self) -> Path:
+        """Legacy method for backward compatibility."""
+        return self.resolve_model_path()
     
     def initialize_mediapipe(self) -> bool:
         """Initialize MediaPipe object detector."""
         try:
-            # Try to get parameter, fall back to default if not declared yet
-            try:
-                model_path = Path(self.get_parameter('model_path').value)
-            except:
-                # Parameter not declared yet, use default
-                model_path = self.model_path
+            # Use the resolved model path
+            model_path = self.model_path
+            if model_path is None:
+                # Fallback: try to resolve model path if not set
+                model_path = self.resolve_model_path()
             
             if not model_path.exists():
                 self.get_logger().error(f'Model file not found: {model_path}')

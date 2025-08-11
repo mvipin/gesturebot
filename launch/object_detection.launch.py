@@ -106,6 +106,13 @@ def generate_launch_description():
         description='Enable performance tracking and publishing to /vision/performance topic. When true, publishes detailed pipeline timing metrics every 5 seconds.'
     )
 
+    # Model configuration
+    declare_model_path = DeclareLaunchArgument(
+        'model_path',
+        default_value='models/efficientdet.tflite',
+        description='Path to the EfficientDet model file. Can be absolute path or relative to package share directory.'
+    )
+
     # ========================================
     # CAMERA NODE (High-Performance Configuration)
     # ========================================
@@ -159,6 +166,7 @@ def generate_launch_description():
             'unlimited_buffer_mode': LaunchConfiguration('unlimited_buffer_mode'),
             'buffer_logging_enabled': LaunchConfiguration('buffer_logging_enabled'),
             'enable_performance_tracking': LaunchConfiguration('enable_performance_tracking'),
+            'model_path': LaunchConfiguration('model_path'),
         }],
         condition=IfCondition(LaunchConfiguration('enable_object_detection')),
         output='screen'
@@ -194,6 +202,7 @@ def generate_launch_description():
         declare_unlimited_buffer_mode,
         declare_buffer_logging_enabled,
         declare_enable_performance_tracking,
+        declare_model_path,
 
         # Object detection system nodes
         object_detection_group
