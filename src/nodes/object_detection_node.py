@@ -194,8 +194,25 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
     def process_frame(self, frame: np.ndarray, timestamp: float) -> Optional[Dict]:
         """Process frame for object detection."""
         try:
-            # Convert BGR to RGB for MediaPipe (preprocessing stage includes this)
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Optimization: Check if frame is already in RGB format (camera_format=RGB888)
+            # If camera outputs RGB888, we can skip the expensive BGR→RGB conversion
+            if frame.shape[2] == 3:  # Ensure it's a 3-channel image
+                # Assume RGB input from camera (when camera_format=RGB888)
+                # This eliminates the expensive cv2.cvtColor() preprocessing step
+                rgb_frame = frame
+                self.log_buffered_event(
+                    'PREPROCESSING_OPTIMIZED',
+                    'Using direct RGB input - skipping BGR→RGB conversion',
+                    frame_shape=str(frame.shape)
+                )
+            else:
+                # Fallback: Convert BGR to RGB for MediaPipe (legacy support)
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                self.log_buffered_event(
+                    'PREPROCESSING_FALLBACK',
+                    'Applied BGR→RGB conversion (fallback mode)',
+                    frame_shape=str(frame.shape)
+                )
 
             # Create MediaPipe image
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
@@ -340,12 +357,21 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                         )
                         return
 
-                    # Convert RGB to BGR if needed (MediaPipe uses RGB, ROS typically uses BGR)
+                    # Optimization: Smart color conversion based on camera format
                     if len(cv_image.shape) == 3 and cv_image.shape[2] == 3:
+                        # When camera_format=RGB888, MediaPipe outputs RGB, need to convert to BGR for ROS
+                        # When camera_format=YUYV (BGR), MediaPipe outputs RGB, need to convert to BGR for ROS
+                        # In both cases, we need RGB→BGR conversion for ROS publishing
                         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
                         self.log_buffered_event(
-                            'COLOR_CONVERSION',
-                            'Converted RGB to BGR for ROS publishing',
+                            'COLOR_CONVERSION_RGB2BGR',
+                            'Applied RGB to BGR conversion for ROS publishing',
+                            final_shape=str(cv_image.shape)
+                        )
+                    else:
+                        self.log_buffered_event(
+                            'COLOR_CONVERSION_SKIPPED',
+                            'Skipping color conversion - unexpected image format',
                             final_shape=str(cv_image.shape)
                         )
 
