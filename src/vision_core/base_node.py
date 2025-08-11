@@ -103,8 +103,6 @@ class BufferedLogger:
     def flush(self):
         """Manually flush the current buffer contents."""
         if not self.enabled:
-            if self.logger:
-                self.logger.info("BufferedLogger is disabled - no buffer to flush")
             return
 
         with self.lock:

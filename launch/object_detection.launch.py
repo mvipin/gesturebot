@@ -130,7 +130,7 @@ def generate_launch_description():
             "buffer_queue_size": 2,  # Reduced buffer for lower latency
             # Camera controls optimized for 5fps
             "FrameDurationLimits": [200000, 200000],  # 5 FPS = 200ms = 200,000 microseconds
-            "ExposureTime": 200000,  # 1/5s in microseconds
+            "ExposureTime": 20000,  # 1/50s in microseconds
             "AnalogueGain": 1.0,
             "DigitalGain": 1.0,
             # Quality settings
