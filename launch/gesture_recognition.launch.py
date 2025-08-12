@@ -86,6 +86,12 @@ def generate_launch_description():
         description='Enable publishing of annotated images with gesture overlays'
     )
 
+    declare_show_landmark_indices = DeclareLaunchArgument(
+        'show_landmark_indices',
+        default_value='false',
+        description='Show landmark indices on each landmark point for debugging'
+    )
+
     # Debug configuration (matching object detection patterns)
     declare_debug_mode = DeclareLaunchArgument(
         'debug_mode',
@@ -173,6 +179,7 @@ def generate_launch_description():
             'gesture_stability_threshold': LaunchConfiguration('gesture_stability_threshold'),
             'priority': 1,
             'publish_annotated_images': LaunchConfiguration('publish_annotated_images'),
+            'show_landmark_indices': LaunchConfiguration('show_landmark_indices'),
             'debug_mode': LaunchConfiguration('debug_mode'),
             'unlimited_buffer_mode': LaunchConfiguration('unlimited_buffer_mode'),
             'buffer_logging_enabled': LaunchConfiguration('buffer_logging_enabled'),
@@ -213,6 +220,7 @@ def generate_launch_description():
         declare_max_hands,
         declare_gesture_stability_threshold,
         declare_publish_annotated_images,
+        declare_show_landmark_indices,
         declare_debug_mode,
         declare_unlimited_buffer_mode,
         declare_buffer_logging_enabled,

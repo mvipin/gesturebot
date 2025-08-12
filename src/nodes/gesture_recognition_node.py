@@ -103,6 +103,15 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             # Parameter may already be declared by launch file or parent class
             self.get_logger().debug(f"Model path parameter handling: {e}")
 
+        # Declare visualization parameters
+        try:
+            if not self.has_parameter('publish_annotated_images'):
+                self.declare_parameter('publish_annotated_images', False)
+            if not self.has_parameter('show_landmark_indices'):
+                self.declare_parameter('show_landmark_indices', False)
+        except Exception as e:
+            self.get_logger().debug(f"Visualization parameter handling: {e}")
+
         # Note: Parameters will be read when initializing controller (after launch file declares them)
 
         # Update logging configuration from parameters
@@ -192,6 +201,17 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
 
         # Enable callback processing
         self.enable_callback_processing()
+
+        # Initialize visualization state
+        self._current_rgb_frame = None
+        self._current_frame_timestamp = None
+        self._current_hand_landmarks = None
+
+        # Visualization parameters
+        try:
+            self._show_landmark_indices = self.get_parameter('show_landmark_indices').value
+        except:
+            self._show_landmark_indices = False  # Default to disabled
 
         self.get_logger().info('Gesture Recognition Node initialized with callback architecture')
 
@@ -365,6 +385,9 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                     )
                     return None
 
+                # Store hand landmarks for visualization
+                self._current_hand_landmarks = result.hand_landmarks
+
                 # Process gesture recognition results
                 gesture_info = self.analyze_gesture_results(
                     result.gestures,
@@ -428,10 +451,22 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                         gesture_name = best_gesture.category_name
                         confidence = round(best_gesture.score, 2)  # Round like sample
 
-                        # Get corresponding handedness
+                        # Get corresponding handedness - fix the list access issue
                         hand_label = 'Unknown'
-                        if hand_index < len(handedness_list) and handedness_list[hand_index] and handedness_list[hand_index].classification:
-                            hand_label = handedness_list[hand_index].classification[0].label
+                        try:
+                            if (hand_index < len(handedness_list) and
+                                handedness_list[hand_index] and
+                                hasattr(handedness_list[hand_index], 'classification') and
+                                len(handedness_list[hand_index].classification) > 0):
+                                hand_label = handedness_list[hand_index].classification[0].label
+                        except (IndexError, AttributeError) as e:
+                            self.log_buffered_event(
+                                'HANDEDNESS_ACCESS_ERROR',
+                                f'Error accessing handedness: {str(e)} - using Unknown',
+                                hand_index=hand_index,
+                                handedness_list_len=len(handedness_list) if handedness_list else 0,
+                                timestamp=timestamp
+                            )
 
                         # Log detection (simplified - no stability checking initially)
                         self.log_buffered_event(
@@ -445,12 +480,27 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
 
                         # Return immediately like sample (no complex stability logic)
                         hand_landmarks = hand_landmarks_list[hand_index] if hand_index < len(hand_landmarks_list) else None
+
+                        # Calculate hand center safely
+                        hand_center = Point()
+                        try:
+                            if hand_landmarks and hasattr(hand_landmarks, 'landmark') and hand_landmarks.landmark:
+                                hand_center = self.calculate_hand_center(hand_landmarks.landmark)
+                        except Exception as e:
+                            self.log_buffered_event(
+                                'HAND_CENTER_CALCULATION_ERROR',
+                                f'Error calculating hand center: {str(e)} - using default Point()',
+                                hand_index=hand_index,
+                                has_landmarks=hand_landmarks is not None,
+                                timestamp=timestamp
+                            )
+
                         return {
                             'gesture_name': gesture_name,
                             'confidence': confidence,
                             'handedness': hand_label,
                             'nav_command': self.GESTURE_COMMANDS.get(gesture_name, ''),
-                            'hand_center': self.calculate_hand_center(hand_landmarks.landmark) if hand_landmarks else Point(),
+                            'hand_center': hand_center,
                             'timestamp': timestamp
                         }
 
@@ -659,10 +709,14 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             )
 
     def create_annotated_image(self, rgb_frame: np.ndarray, gesture_info: Dict) -> Optional[np.ndarray]:
-        """Create annotated image with gesture information."""
+        """Create annotated image with comprehensive MediaPipe hand landmarks visualization."""
         try:
-            # Create a copy for annotation
-            annotated_frame = rgb_frame.copy()
+            # Create a copy for annotation (convert RGB to BGR for OpenCV drawing)
+            annotated_frame = cv2.cvtColor(rgb_frame.copy(), cv2.COLOR_RGB2BGR)
+
+            # Draw MediaPipe hand landmarks if available
+            if hasattr(self, '_current_hand_landmarks') and self._current_hand_landmarks:
+                self.draw_hand_landmarks(annotated_frame, self._current_hand_landmarks)
 
             # Add gesture text overlay
             gesture_text = f"{gesture_info['gesture_name']} ({gesture_info['confidence']:.2f})"
@@ -670,8 +724,8 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             if nav_command:
                 gesture_text += f" -> {nav_command}"
 
-            # Add text to image
-            cv2.putText(
+            # Add text to image with background for better visibility
+            self.draw_text_with_background(
                 annotated_frame,
                 gesture_text,
                 (10, 30),
@@ -683,7 +737,7 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
 
             # Add handedness info
             handedness_text = f"{gesture_info['handedness']} hand"
-            cv2.putText(
+            self.draw_text_with_background(
                 annotated_frame,
                 handedness_text,
                 (10, 60),
@@ -693,7 +747,16 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 1
             )
 
-            return annotated_frame
+            # Add hand center point if available
+            hand_center = gesture_info.get('hand_center')
+            if hand_center and (hand_center.x != 0.0 or hand_center.y != 0.0):
+                center_x = int(hand_center.x * annotated_frame.shape[1])
+                center_y = int(hand_center.y * annotated_frame.shape[0])
+                cv2.circle(annotated_frame, (center_x, center_y), 8, (255, 0, 255), -1)  # Magenta center
+                cv2.circle(annotated_frame, (center_x, center_y), 12, (255, 255, 255), 2)  # White border
+
+            # Convert back to RGB for ROS publishing
+            return cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
 
         except Exception as e:
             self.log_buffered_event(
@@ -701,6 +764,229 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 f'Error creating annotation: {str(e)}'
             )
             return None
+
+    def draw_hand_landmarks(self, image: np.ndarray, hand_landmarks_list) -> None:
+        """Draw comprehensive MediaPipe hand landmarks and connections on the image."""
+        try:
+            # Import MediaPipe drawing utilities
+            import mediapipe as mp
+            mp_drawing = mp.solutions.drawing_utils
+            mp_hands = mp.solutions.hands
+
+            # Draw landmarks for each detected hand
+            for hand_index, hand_landmarks in enumerate(hand_landmarks_list):
+                # Handle both MediaPipe NormalizedLandmarkList and Python list formats
+                if hand_landmarks:
+                    # Check if it's already a MediaPipe NormalizedLandmarkList
+                    if hasattr(hand_landmarks, 'landmark'):
+                        landmark_list = hand_landmarks
+                    # Handle Python list format (convert to MediaPipe format)
+                    elif isinstance(hand_landmarks, list):
+                        # Create a MediaPipe NormalizedLandmarkList from the Python list
+                        from mediapipe.framework.formats import landmark_pb2
+                        landmark_list = landmark_pb2.NormalizedLandmarkList()
+                        for landmark in hand_landmarks:
+                            # Create a new landmark message and copy the values
+                            new_landmark = landmark_list.landmark.add()
+                            new_landmark.x = landmark.x
+                            new_landmark.y = landmark.y
+                            new_landmark.z = landmark.z
+                            new_landmark.visibility = landmark.visibility
+                            new_landmark.presence = landmark.presence
+                    else:
+                        continue
+
+                    # Draw comprehensive hand landmarks visualization
+                    try:
+                        # Create custom drawing styles for optimal visibility
+                        landmark_style = mp_drawing.DrawingSpec(
+                            color=(0, 255, 0),  # Bright green
+                            thickness=3,
+                            circle_radius=4
+                        )
+                        connection_style = mp_drawing.DrawingSpec(
+                            color=(255, 0, 255),  # Bright magenta
+                            thickness=2
+                        )
+
+                        # Draw MediaPipe landmarks and connections
+                        mp_drawing.draw_landmarks(
+                            image,
+                            landmark_list,
+                            mp_hands.HAND_CONNECTIONS,
+                            landmark_style,
+                            connection_style
+                        )
+
+                        # Add enhanced landmark visualization
+                        height, width = image.shape[:2]
+
+                        # Draw all landmarks with cyan circles for additional visibility
+                        for i, landmark in enumerate(hand_landmarks):
+                            x = int(landmark.x * width)
+                            y = int(landmark.y * height)
+                            cv2.circle(image, (x, y), 3, (255, 255, 0), -1)  # Cyan circles
+                            cv2.circle(image, (x, y), 5, (0, 255, 255), 1)   # Yellow border
+
+                        # Draw hand skeleton connections manually to ensure visibility
+                        hand_connections = [
+                            # Thumb
+                            (0, 1), (1, 2), (2, 3), (3, 4),
+                            # Index finger
+                            (0, 5), (5, 6), (6, 7), (7, 8),
+                            # Middle finger
+                            (0, 9), (9, 10), (10, 11), (11, 12),
+                            # Ring finger
+                            (0, 13), (13, 14), (14, 15), (15, 16),
+                            # Pinky
+                            (0, 17), (17, 18), (18, 19), (19, 20),
+                            # Palm connections
+                            (5, 9), (9, 13), (13, 17)
+                        ]
+
+                        for connection in hand_connections:
+                            start_idx, end_idx = connection
+                            if start_idx < len(hand_landmarks) and end_idx < len(hand_landmarks):
+                                start_landmark = hand_landmarks[start_idx]
+                                end_landmark = hand_landmarks[end_idx]
+                                start_x = int(start_landmark.x * width)
+                                start_y = int(start_landmark.y * height)
+                                end_x = int(end_landmark.x * width)
+                                end_y = int(end_landmark.y * height)
+                                cv2.line(image, (start_x, start_y), (end_x, end_y), (255, 0, 255), 2)  # Bright magenta lines
+
+                        # Highlight key landmarks (wrist and fingertips) with distinctive markers
+                        for i, landmark in enumerate(hand_landmarks):
+                            x = int(landmark.x * width)
+                            y = int(landmark.y * height)
+                            if i in [0, 4, 8, 12, 16, 20]:  # Wrist and fingertips
+                                cv2.circle(image, (x, y), 8, (0, 0, 255), -1)  # Red circles
+                                cv2.circle(image, (x, y), 10, (255, 255, 255), 2)  # White border
+                                # Optional: Add landmark indices if enabled
+                                if hasattr(self, '_show_landmark_indices') and self._show_landmark_indices:
+                                    cv2.putText(image, str(i), (x+12, y-12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+                    except Exception as draw_error:
+                        self.log_buffered_event(
+                            'LANDMARK_DRAWING_ERROR',
+                            f'Error drawing landmarks for hand {hand_index}: {str(draw_error)}'
+                        )
+                        # Simple fallback: draw basic landmark circles
+                        try:
+                            height, width = image.shape[:2]
+                            for i, landmark in enumerate(hand_landmarks):
+                                x = int(landmark.x * width)
+                                y = int(landmark.y * height)
+                                cv2.circle(image, (x, y), 4, (0, 255, 255), -1)  # Cyan fallback circles
+                        except Exception as fallback_error:
+                            self.log_buffered_event(
+                                'FALLBACK_DRAWING_ERROR',
+                                f'Fallback drawing failed: {str(fallback_error)}'
+                            )
+
+                    # Add landmark indices for debugging (optional - can be toggled)
+                    if hasattr(self, '_show_landmark_indices') and self._show_landmark_indices:
+                        self.draw_landmark_indices(image, hand_landmarks)
+
+                    # Add hand bounding box
+                    self.draw_hand_bounding_box(image, hand_landmarks, hand_index)
+
+        except Exception as e:
+            self.log_buffered_event(
+                'LANDMARK_DRAWING_ERROR',
+                f'Error drawing hand landmarks: {str(e)}'
+            )
+
+    def draw_landmark_indices(self, image: np.ndarray, hand_landmarks) -> None:
+        """Draw landmark indices on each landmark point for debugging."""
+        try:
+            height, width = image.shape[:2]
+            for idx, landmark in enumerate(hand_landmarks.landmark):
+                x = int(landmark.x * width)
+                y = int(landmark.y * height)
+
+                # Draw small text with landmark index
+                cv2.putText(
+                    image,
+                    str(idx),
+                    (x + 5, y - 5),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.3,
+                    (255, 255, 0),  # Yellow text
+                    1
+                )
+        except Exception as e:
+            self.log_buffered_event(
+                'LANDMARK_INDICES_ERROR',
+                f'Error drawing landmark indices: {str(e)}'
+            )
+
+    def draw_hand_bounding_box(self, image: np.ndarray, hand_landmarks, hand_index: int) -> None:
+        """Draw bounding box around detected hand."""
+        try:
+            height, width = image.shape[:2]
+
+            # Calculate bounding box from landmarks
+            x_coords = [landmark.x * width for landmark in hand_landmarks.landmark]
+            y_coords = [landmark.y * height for landmark in hand_landmarks.landmark]
+
+            x_min, x_max = int(min(x_coords)), int(max(x_coords))
+            y_min, y_max = int(min(y_coords)), int(max(y_coords))
+
+            # Add padding
+            padding = 20
+            x_min = max(0, x_min - padding)
+            y_min = max(0, y_min - padding)
+            x_max = min(width, x_max + padding)
+            y_max = min(height, y_max + padding)
+
+            # Draw bounding box
+            color = (0, 255, 255) if hand_index == 0 else (255, 0, 255)  # Cyan for first hand, Magenta for second
+            cv2.rectangle(image, (x_min, y_min), (x_max, y_max), color, 2)
+
+            # Add hand label
+            label = f"Hand {hand_index + 1}"
+            cv2.putText(
+                image,
+                label,
+                (x_min, y_min - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                color,
+                2
+            )
+
+        except Exception as e:
+            self.log_buffered_event(
+                'BOUNDING_BOX_ERROR',
+                f'Error drawing hand bounding box: {str(e)}'
+            )
+
+    def draw_text_with_background(self, image: np.ndarray, text: str, position: tuple,
+                                font, font_scale: float, color: tuple, thickness: int) -> None:
+        """Draw text with a semi-transparent background for better visibility."""
+        try:
+            # Get text size
+            (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+
+            # Draw background rectangle
+            x, y = position
+            cv2.rectangle(
+                image,
+                (x - 5, y - text_height - 5),
+                (x + text_width + 5, y + baseline + 5),
+                (0, 0, 0),  # Black background
+                -1
+            )
+
+            # Draw text
+            cv2.putText(image, text, position, font, font_scale, color, thickness)
+
+        except Exception as e:
+            self.log_buffered_event(
+                'TEXT_DRAWING_ERROR',
+                f'Error drawing text with background: {str(e)}'
+            )
 
     def cleanup(self) -> None:
         """Cleanup MediaPipe resources."""

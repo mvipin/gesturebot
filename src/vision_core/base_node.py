@@ -340,7 +340,7 @@ class MediaPipeBaseNode(Node, ABC):
 
         try:
             # Convert ROS image to OpenCV (preprocessing stage includes this conversion)
-            cv_image = self.cv_bridge.imgmsg_to_cv2(msg, 'bgr8')
+            cv_image = self.cv_bridge.imgmsg_to_cv2(msg, 'rgb8')
             timestamp = time.time()
 
             # Process frame asynchronously to avoid blocking

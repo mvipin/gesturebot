@@ -23,12 +23,12 @@ class ImageViewerNode(Node):
     """
 
     def __init__(self):
-        super().__init__('image_viewer_node')
+        super().__init__('gesture_image_viewer')
         
         # Declare parameters
         self.declare_parameter(
-            'window_name', 
-            'GestureBot Object Detection',
+            'window_name',
+            'GestureBot Gesture Recognition',
             ParameterDescriptor(description='OpenCV window name for display')
         )
         
@@ -58,7 +58,7 @@ class ImageViewerNode(Node):
 
         self.declare_parameter(
             'image_topic',
-            '/vision/objects/annotated',
+            '/vision/gestures/annotated',
             ParameterDescriptor(description='ROS topic to subscribe to for images')
         )
         
