@@ -22,6 +22,7 @@ from ament_index_python.packages import get_package_share_directory, PackageNotF
 from rcl_interfaces.msg import ParameterDescriptor
 
 from vision_core.base_node import MediaPipeBaseNode, ProcessingConfig, MediaPipeCallbackMixin, PerformanceStats, PipelineTimer
+from vision_core.controller import ObjectDetectionController
 from vision_core.message_converter import MessageConverter
 from gesturebot.msg import DetectedObjects
 
@@ -46,14 +47,12 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             priority=0  # Critical priority for navigation safety
         )
 
-        # MediaPipe components
-        self.detector = None
+        # MediaPipe controller (composition)
+        self.controller = None
 
         # Model path will be set after parameter declaration
         self.model_path = None
 
-        # Flag to prevent premature MediaPipe initialization
-        self._mediapipe_initialized = False
 
         # Initialize MediaPipeCallbackMixin first (required for base class initialization)
         MediaPipeCallbackMixin.__init__(self)
@@ -65,7 +64,8 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             config,
             enable_buffered_logging=True,  # Default, will be updated
             unlimited_buffer_mode=False,   # Default, will be updated
-            enable_performance_tracking=False  # Default, will be updated
+            enable_performance_tracking=False,  # Default, will be updated
+            controller=None  # Will set after model_path is resolved
         )
 
         # Detection counter for periodic logging
@@ -75,10 +75,16 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         self._current_rgb_frame = None
         self._current_frame_timestamp = None
 
-        # Declare parameters for this node
+        # Declare parameters for this node (only those not provided by launch file)
         self.declare_parameter('unlimited_buffer_mode', False)
         self.declare_parameter('buffer_logging_enabled', True)
         self.declare_parameter('enable_performance_tracking', False)
+
+        # Note: confidence_threshold, max_results, publish_annotated_images are declared by launch file
+        # Detection-specific parameters (ensure declared before access)
+        self.declare_parameter('confidence_threshold', config.confidence_threshold)
+        self.declare_parameter('max_results', config.max_results)
+        self.declare_parameter('publish_annotated_images', True)
 
         # Declare model path parameter with descriptor (if not already declared)
         try:
@@ -124,10 +130,17 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         # Resolve model path using parameter and resource discovery
         self.model_path = self.resolve_model_path()
 
-        # Now that model path is resolved, initialize MediaPipe
-        if not self.initialize_mediapipe():
-            self.get_logger().error("Failed to initialize MediaPipe - node will not function properly")
-
+        # Initialize MediaPipe controller (composition)
+        try:
+            self.controller = ObjectDetectionController(
+                model_path=str(self.model_path),
+                confidence_threshold=float(self.get_parameter('confidence_threshold').value),
+                max_results=int(self.get_parameter('max_results').value),
+                result_callback=self.create_callback('detection')
+            )
+            self.get_logger().info('MediaPipe object detector initialized via controller')
+        except Exception as e:
+            self.get_logger().error(f'Failed to initialize MediaPipe controller: {e}')
         # Log the buffer configuration (using inherited buffered logger)
         buffer_stats = self.get_buffer_stats()
         self.get_logger().info(f"BufferedLogger initialized: {buffer_stats}")
@@ -238,56 +251,7 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         """Legacy method for backward compatibility."""
         return self.resolve_model_path()
     
-    def initialize_mediapipe(self) -> bool:
-        """Initialize MediaPipe object detector."""
-        # Prevent initialization if called too early (from parent constructor)
-        if self.model_path is None:
-            self.get_logger().debug("MediaPipe initialization deferred - model path not yet resolved")
-            return True  # Return True to avoid error, will initialize later
 
-        # Prevent double initialization
-        if self._mediapipe_initialized:
-            return True
-
-        try:
-            # Use the resolved model path
-            model_path = self.model_path
-            
-            if not model_path.exists():
-                self.get_logger().error(f'Model file not found: {model_path}')
-                return False
-            
-            # Initialize object detector
-            base_options = mp_py.BaseOptions(model_asset_path=str(model_path))
-
-            # Try to get parameters, fall back to defaults if not declared yet
-            try:
-                max_results = self.get_parameter('max_results').value
-            except:
-                max_results = 5  # Default value
-
-            try:
-                confidence_threshold = self.get_parameter('confidence_threshold').value
-            except:
-                confidence_threshold = 0.5  # Default value
-
-            options = mp_vis.ObjectDetectorOptions(
-                base_options=base_options,
-                running_mode=mp_vis.RunningMode.LIVE_STREAM,
-                max_results=max_results,
-                score_threshold=confidence_threshold,
-                result_callback=self.create_callback('detection')
-            )
-            
-            self.detector = mp_vis.ObjectDetector.create_from_options(options)
-
-            self._mediapipe_initialized = True
-            self.get_logger().info('MediaPipe object detector initialized successfully')
-            return True
-            
-        except Exception as e:
-            self.get_logger().error(f'Failed to initialize MediaPipe: {e}')
-            return False
     
     def process_frame(self, frame: np.ndarray, timestamp: float) -> Optional[Dict]:
         """
@@ -324,8 +288,8 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
 
             # Run detection asynchronously - results will be published via callback
             timestamp_ms = int(timestamp * 1000)
-            if self.detector:
-                self.detector.detect_async(mp_image, timestamp_ms)
+            if self.controller and self.controller.is_ready():
+                self.controller.detect_async(mp_image, timestamp_ms)
                 self.log_buffered_event(
                     'ASYNC_DETECTION_SUBMITTED',
                     'Submitted frame for async detection',
@@ -333,7 +297,7 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                     frame_shape=str(rgb_frame.shape)
                 )
             else:
-                self.get_logger().error(f'No detector available!')
+                self.get_logger().error('No controller available or not ready!')
                 return None
 
             # Return None for callback-based nodes to prevent duplicate publishing
@@ -634,8 +598,8 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
     def cleanup(self) -> None:
         """Cleanup MediaPipe resources."""
         try:
-            if self.detector:
-                self.detector.close()
+            if self.controller:
+                self.controller.close()
             # Parent cleanup will handle buffer flushing
             super().cleanup()
         except Exception as e:

@@ -8,6 +8,7 @@ import time
 import threading
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Callable
+from .controller import MediaPipeController
 from dataclasses import dataclass
 from collections import deque
 from datetime import datetime
@@ -218,17 +219,21 @@ class PerformanceStats:
 class MediaPipeBaseNode(Node, ABC):
     """
     Abstract base class for all MediaPipe feature nodes.
-    Provides common functionality for camera input, processing, and output.
-    Includes configurable buffered logging for diagnostics.
+    Provides common ROS infrastructure only (QoS, pubs/subs, timers, logging, perf).
+    No MediaPipe initialization is performed here.
     """
 
     def __init__(self, node_name: str, feature_name: str, config: ProcessingConfig,
                  enable_buffered_logging: bool = True, unlimited_buffer_mode: bool = False,
-                 enable_performance_tracking: bool = False):
+                 enable_performance_tracking: bool = False,
+                 controller: Optional[MediaPipeController] = None):
         super().__init__(node_name)
 
         self.feature_name = feature_name
         self.config = config
+
+        # Optionally provided controller (composition). Nodes may set/replace later.
+        self.controller: Optional[MediaPipeController] = controller
 
         # Initialize buffered logging
         self.buffered_logger = BufferedLogger(
@@ -265,23 +270,23 @@ class MediaPipeBaseNode(Node, ABC):
         # Set up callback mixin reference (all MediaPipe nodes use callbacks)
         self._set_base_node_reference(self)
         self.enable_callback_processing()
-        
+
         # ROS 2 components
         self.cv_bridge = CvBridge()
-        
+
         # QoS profiles for different data types
         self.image_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
-        
+
         self.result_qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
             history=HistoryPolicy.KEEP_LAST,
             depth=10
         )
-        
+
         # Subscribers
         self.image_subscription = self.create_subscription(
             Image,
@@ -289,16 +294,13 @@ class MediaPipeBaseNode(Node, ABC):
             self.image_callback,
             self.image_qos
         )
-        
+
         # Publishers
         self.performance_publisher = self.create_publisher(
             VisionPerformance,
             '/vision/performance',
             self.result_qos
         )
-        
-        # Initialize MediaPipe components
-        self.initialize_mediapipe()
 
         # Performance monitoring timer
         self.performance_timer = self.create_timer(5.0, self.publish_performance_stats)
@@ -311,11 +313,6 @@ class MediaPipeBaseNode(Node, ABC):
         self.get_logger().info(f'BufferedLogger initialized: {buffer_stats}')
 
         self.get_logger().info(f'{self.feature_name} node initialized')
-    
-    @abstractmethod
-    def initialize_mediapipe(self) -> bool:
-        """Initialize MediaPipe components. Must be implemented by subclasses."""
-        pass
     
     @abstractmethod
     def process_frame(self, frame: np.ndarray, timestamp: float) -> Any:

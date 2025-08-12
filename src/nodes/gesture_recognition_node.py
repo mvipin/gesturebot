@@ -1,28 +1,36 @@
 #!/usr/bin/env python3
 """
 Gesture Recognition Node for GestureBot Vision System
-MediaPipe hand gesture recognition with navigation command mapping.
+MediaPipe gesture recognition with callback-based architecture and navigation command mapping.
 """
 
 import time
-from typing import Dict, Any, Optional
+import os
+from pathlib import Path
+from typing import Dict, Optional
 
 import cv2
 import numpy as np
 import mediapipe as mp
+from mediapipe.tasks import python as mp_py
+from mediapipe.tasks.python import vision as mp_vis
 
-from vision_core.base_node import MediaPipeBaseNode, ProcessingConfig
+from ament_index_python.packages import get_package_share_directory, PackageNotFoundError
+from rcl_interfaces.msg import ParameterDescriptor
+
+from vision_core.base_node import MediaPipeBaseNode, ProcessingConfig, MediaPipeCallbackMixin
+from vision_core.controller import GestureRecognitionController
 from vision_core.message_converter import MessageConverter
 from gesturebot.msg import HandGesture
 from geometry_msgs.msg import Point
 
 
-class GestureRecognitionNode(MediaPipeBaseNode):
+class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
     """
-    ROS 2 node for real-time hand gesture recognition using MediaPipe.
-    Maps recognized gestures to navigation commands for GestureBot.
+    ROS 2 node for real-time gesture recognition using MediaPipe GestureRecognizer.
+    Uses callback-based architecture for optimal performance and navigation command mapping.
     """
-    
+
     # Gesture to navigation command mapping
     GESTURE_COMMANDS = {
         'thumbs_up': 'start_navigation',
@@ -35,7 +43,7 @@ class GestureRecognitionNode(MediaPipeBaseNode):
         'fist': 'emergency_stop',
         'wave': 'return_home'
     }
-    
+
     def __init__(self):
         # Configuration for gesture recognition
         config = ProcessingConfig(
@@ -46,109 +54,424 @@ class GestureRecognitionNode(MediaPipeBaseNode):
             max_results=2,  # Support up to 2 hands
             priority=1  # High priority for navigation
         )
-        
-        super().__init__('gesture_recognition_node', 'gesture_recognition', config)
-        
-        # MediaPipe components
-        self.hands = None
-        self.mp_hands = mp.solutions.hands
-        self.mp_drawing = mp.solutions.drawing_utils
-        
+
+        # MediaPipe controller (composition)
+        self.controller = None
+
+        # Model path will be set after parameter declaration
+        self.model_path = None
+
         # Gesture state tracking
         self.current_gesture = None
         self.gesture_start_time = None
         self.gesture_stability_threshold = 0.5  # seconds
-        
+
+        # Initialize MediaPipeCallbackMixin first (required for base class initialization)
+        MediaPipeCallbackMixin.__init__(self)
+
+        # Initialize parent with default values (will be updated after parameter declaration)
+        super().__init__(
+            'gesture_recognition_node',
+            'gesture_recognition',
+            config,
+            enable_buffered_logging=True,  # Default, will be updated
+            unlimited_buffer_mode=False,   # Default, will be updated
+            enable_performance_tracking=False,  # Default, will be updated
+            controller=None  # Will set after model_path is resolved
+        )
+
+        # Set base node reference for callback publishing
+        self._set_base_node_reference(self)
+
+        # Declare parameters for this node (only those not provided by launch file)
+        self.declare_parameter('unlimited_buffer_mode', False)
+        self.declare_parameter('buffer_logging_enabled', True)
+        self.declare_parameter('enable_performance_tracking', False)
+
+        # Note: confidence_threshold, max_hands, gesture_stability_threshold,
+        # publish_annotated_images, debug_mode are declared by launch file
+        # Declare model path parameter with descriptor (if not already declared)
+        try:
+            # Check if parameter already exists
+            if not self.has_parameter('model_path'):
+                model_path_descriptor = ParameterDescriptor(
+                    description='Path to the gesture recognition model file (.task). Can be absolute path or relative to package share directory.',
+                    additional_constraints='Must be a valid path to a .task model file'
+                )
+                self.declare_parameter('model_path', 'models/gesture_recognizer.task', model_path_descriptor)
+        except Exception as e:
+            # Parameter may already be declared by launch file or parent class
+            self.get_logger().debug(f"Model path parameter handling: {e}")
+
+        # Note: Parameters will be read when initializing controller (after launch file declares them)
+
+        # Update logging configuration from parameters
+        try:
+            buffer_logging_enabled = self.get_parameter('buffer_logging_enabled').value
+            unlimited_buffer_mode = self.get_parameter('unlimited_buffer_mode').value
+            enable_performance_tracking = self.get_parameter('enable_performance_tracking').value
+
+            # Update buffered logger configuration
+            self.buffered_logger.enabled = buffer_logging_enabled
+            self.buffered_logger.unlimited_mode = unlimited_buffer_mode
+            self.enable_performance_tracking = enable_performance_tracking
+        except Exception as e:
+            self.get_logger().warn(f'Error configuring logging, using defaults: {e}')
+
+        # Log the buffer configuration (using inherited buffered logger)
+        buffer_stats = self.get_buffer_stats()
+        self.get_logger().info(f"BufferedLogger initialized: {buffer_stats}")
+
         # Publishers
-        self.gesture_publisher = self.create_publisher(
+        self.gestures_publisher = self.create_publisher(
             HandGesture,
             '/vision/gestures',
             self.result_qos
         )
-        
-        # Parameters
-        self.declare_parameter('confidence_threshold', 0.7)
-        self.declare_parameter('max_hands', 2)
-        self.declare_parameter('gesture_stability_threshold', 0.5)
-        
-        self.get_logger().info('Gesture Recognition Node initialized')
-    
-    def initialize_mediapipe(self) -> bool:
-        """Initialize MediaPipe hands detection."""
+
+        # Conditional annotated image publisher
+        self.annotated_image_publisher = None
+
+        # Check if annotated image publishing is enabled
         try:
-            self.hands = self.mp_hands.Hands(
-                static_image_mode=False,
-                max_num_hands=self.get_parameter('max_hands').value,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
+            publish_annotated = self.get_parameter('publish_annotated_images').value
+        except:
+            publish_annotated = False  # Default to disabled for gestures
+
+        if publish_annotated:
+            from sensor_msgs.msg import Image
+            self.annotated_image_publisher = self.create_publisher(
+                Image,
+                '/vision/gestures/annotated',
+                self.image_qos
             )
-            
-            self.get_logger().info('MediaPipe hands initialized successfully')
-            return True
-            
-        except Exception as e:
-            self.get_logger().error(f'Failed to initialize MediaPipe: {e}')
-            return False
-    
-    def process_frame(self, frame: np.ndarray, timestamp: float) -> Optional[Dict]:
-        """Process frame for gesture recognition."""
+            self.get_logger().info('Annotated gesture image publisher enabled')
+
+        # Resolve model path using parameter and resource discovery
+        self.model_path = self.resolve_model_path()
+
+        # Initialize MediaPipe controller (composition)
         try:
-            # Convert BGR to RGB for MediaPipe
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # Process with MediaPipe
-            results = self.hands.process(rgb_frame)
-            
-            if results.multi_hand_landmarks and results.multi_handedness:
-                # Analyze gestures from hand landmarks
-                gesture_info = self.analyze_hand_gestures(
-                    results.multi_hand_landmarks,
-                    results.multi_handedness,
-                    timestamp
+            if self.model_path and self.model_path.exists():
+                # Get parameters with fallbacks (launch file provides these)
+                try:
+                    confidence_threshold = float(self.get_parameter('confidence_threshold').value)
+                except:
+                    confidence_threshold = config.confidence_threshold
+                    self.get_logger().debug(f'Using config confidence_threshold: {confidence_threshold}')
+
+                try:
+                    max_hands = int(self.get_parameter('max_hands').value)
+                except:
+                    max_hands = config.max_results
+                    self.get_logger().debug(f'Using config max_hands: {max_hands}')
+
+                try:
+                    self.gesture_stability_threshold = float(self.get_parameter('gesture_stability_threshold').value)
+                except:
+                    self.gesture_stability_threshold = 0.5  # Default value
+                    self.get_logger().debug(f'Using default gesture_stability_threshold: {self.gesture_stability_threshold}')
+
+                # Update config with actual values for use in processing
+                self.config.confidence_threshold = confidence_threshold
+                self.config.max_results = max_hands
+
+                self.controller = GestureRecognitionController(
+                    model_path=str(self.model_path),
+                    confidence_threshold=confidence_threshold,
+                    max_hands=max_hands,
+                    result_callback=self.create_callback('gesture')
                 )
-                
-                if gesture_info:
-                    return gesture_info
-            
-            return None
-            
+                self.get_logger().info('MediaPipe gesture recognizer initialized via controller')
+            else:
+                self.get_logger().error('Gesture model not found - controller not initialized')
+                return
         except Exception as e:
-            self.get_logger().error(f'Error processing frame: {e}')
-            return None
-    
-    def analyze_hand_gestures(self, hand_landmarks_list, handedness_list, timestamp: float) -> Optional[Dict]:
-        """Analyze hand landmarks to recognize gestures."""
+            self.get_logger().error(f'Failed to initialize MediaPipe controller: {e}')
+            return
+
+        # Enable callback processing
+        self.enable_callback_processing()
+
+        self.get_logger().info('Gesture Recognition Node initialized with callback architecture')
+
+    def resolve_model_path(self) -> Path:
+        """
+        Resolve the model path using ROS 2 resource discovery and parameters.
+
+        Returns:
+            Path: Resolved path to the model file, or None if not found
+
+        Raises:
+            FileNotFoundError: If model file cannot be found in any location
+        """
+        # Get model path parameter
+        model_path_param = self.get_parameter('model_path').get_parameter_value().string_value
+
+        # If absolute path is provided, use it directly
+        if os.path.isabs(model_path_param):
+            model_path = Path(model_path_param)
+            if model_path.exists():
+                self.get_logger().info(f"Using absolute model path: {model_path}")
+                return model_path
+            else:
+                self.get_logger().warn(f"Absolute model path does not exist: {model_path}")
+
+        # Try to resolve relative path using package resource discovery
         try:
-            # Simple gesture recognition based on hand landmarks
-            # This is a simplified implementation - you can enhance with more sophisticated algorithms
-            
-            for hand_landmarks, handedness in zip(hand_landmarks_list, handedness_list):
-                hand_label = handedness.classification[0].label
-                
-                # Extract key landmarks
-                landmarks = hand_landmarks.landmark
-                
-                # Simple gesture detection based on finger positions
-                gesture_name = self.detect_simple_gesture(landmarks)
-                
-                if gesture_name and self.is_gesture_stable(gesture_name, timestamp):
-                    return {
-                        'gesture_name': gesture_name,
-                        'confidence': 0.8,  # Simplified confidence
-                        'handedness': hand_label,
-                        'nav_command': self.GESTURE_COMMANDS.get(gesture_name, ''),
-                        'hand_center': self.calculate_hand_center(landmarks),
-                        'timestamp': timestamp
-                    }
-            
+            package_share_dir = get_package_share_directory('gesturebot')
+            package_model_path = Path(package_share_dir) / model_path_param
+            if package_model_path.exists():
+                self.get_logger().info(f"Using package model path: {package_model_path}")
+                return package_model_path
+            else:
+                self.get_logger().warn(f"Package model path does not exist: {package_model_path}")
+        except PackageNotFoundError:
+            self.get_logger().warn("Package 'gesturebot' not found in ament index")
+
+        # Fallback locations for development and alternative installations
+        fallback_paths = [
+            # Source location (development)
+            Path(__file__).parent.parent.parent / 'models' / 'gesture_recognizer.task',
+            # Alternative package locations
+            Path('/opt/ros/jazzy/share/gesturebot') / model_path_param,
+            # Legacy locations for backward compatibility
+            Path.home() / 'GestureBot' / 'gesturebot_ws' / 'src' / 'gesturebot' / 'models' / 'gesture_recognizer.task',
+            # Current working directory
+            Path.cwd() / model_path_param,
+        ]
+
+        for path in fallback_paths:
+            if path.exists():
+                self.get_logger().info(f"Using fallback model path: {path}")
+                return path
+
+        # If no existing path found, log warning and return None for fallback
+        try:
+            package_share_dir = get_package_share_directory('gesturebot')
+            preferred_path = Path(package_share_dir) / model_path_param
+        except PackageNotFoundError:
+            preferred_path = Path(model_path_param)
+
+        # Log all attempted paths for debugging
+        attempted_paths = [model_path_param] if os.path.isabs(model_path_param) else []
+        try:
+            attempted_paths.append(str(Path(get_package_share_directory('gesturebot')) / model_path_param))
+        except PackageNotFoundError:
+            pass
+        attempted_paths.extend([str(p) for p in fallback_paths])
+
+        warning_msg = f"Gesture model file not found. Will fall back to hand landmarks. Attempted paths:\n" + "\n".join(f"  - {p}" for p in attempted_paths)
+        self.get_logger().warn(warning_msg)
+
+        return None  # Return None to trigger fallback to hand landmarks
+
+    def initialize_mediapipe(self) -> bool:
+        """Deprecated in composition design; controller handles initialization."""
+        self.get_logger().warn('initialize_mediapipe() is deprecated; controller handles initialization')
+        return True
+
+    def process_frame(self, frame: np.ndarray, timestamp: float) -> Optional[Dict]:
+        """
+        Process frame for gesture recognition using async callback architecture.
+        This method only submits the frame to MediaPipe - results are published via callback.
+        """
+        try:
+            # Optimization: Check if frame is already in RGB format (camera_format=RGB888)
+            # If camera outputs RGB888, we can skip the expensive BGR→RGB conversion
+            if frame.shape[2] == 3:  # Ensure it's a 3-channel image
+                # Assume RGB input from camera (when camera_format=RGB888)
+                # This eliminates the expensive cv2.cvtColor() preprocessing step
+                rgb_frame = frame
+                self.log_buffered_event(
+                    'PREPROCESSING_OPTIMIZED',
+                    'Using direct RGB input - skipping BGR→RGB conversion',
+                    frame_shape=str(frame.shape)
+                )
+            else:
+                # Fallback: Convert BGR to RGB for MediaPipe
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                self.log_buffered_event(
+                    'PREPROCESSING_CONVERSION',
+                    'Converting BGR to RGB for MediaPipe',
+                    frame_shape=str(frame.shape)
+                )
+
+            # Store RGB frame for callback access
+            self._current_rgb_frame = rgb_frame
+            self._current_frame_timestamp = timestamp
+
+            # Use high-precision timestamp like the working sample
+            timestamp_ms = time.time_ns() // 1_000_000
+
+            # Use controller for gesture recognition
+            if self.controller and self.controller.is_ready():
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                self.controller.detect_async(mp_image, timestamp_ms)
+                self.log_buffered_event(
+                    'ASYNC_RECOGNITION_SUBMITTED',
+                    'Submitted frame for async gesture recognition',
+                    timestamp_ms=timestamp_ms,
+                    frame_shape=str(rgb_frame.shape)
+                )
+            else:
+                self.get_logger().error('No controller available or not ready!')
+                return None
+
+            # Return None for callback-based nodes to prevent duplicate publishing
+            # Actual results will be published via callback when ready
             return None
-            
+
         except Exception as e:
-            self.get_logger().error(f'Error analyzing gestures: {e}')
+            self.log_buffered_event(
+                'PROCESSING_ERROR',
+                f'Error processing frame: {str(e)}',
+                timestamp=timestamp
+            )
             return None
-    
+
+
+
+    def _process_callback_results(self, result, output_image, timestamp_ms: int, result_type: str) -> Optional[Dict]:
+        """
+        Process MediaPipe callback results into the format expected by publish_results().
+        This method is called from the MediaPipe callback thread.
+
+        Args:
+            result: MediaPipe gesture recognition result
+            output_image: MediaPipe output image (unused for gesture recognition)
+            timestamp_ms: Timestamp in milliseconds
+            result_type: Type of result being processed
+        """
+        # Note: output_image parameter is required by MediaPipe callback signature but unused
+        try:
+            # Debug logging like working sample
+            self.log_buffered_event(
+                'CALLBACK_RECEIVED',
+                f'Callback received - gestures: {len(result.gestures) if result and result.gestures else 0}, hands: {len(result.hand_landmarks) if result and result.hand_landmarks else 0}',
+                timestamp_ms=timestamp_ms
+            )
+
+            if result and (result.gestures or result.hand_landmarks):
+                # Use stored RGB frame from process_frame
+                rgb_frame = self._current_rgb_frame
+                original_timestamp = self._current_frame_timestamp
+
+                if rgb_frame is None:
+                    self.log_buffered_event(
+                        'CALLBACK_ERROR',
+                        'No RGB frame available for callback processing',
+                        timestamp_ms=timestamp_ms
+                    )
+                    return None
+
+                # Process gesture recognition results
+                gesture_info = self.analyze_gesture_results(
+                    result.gestures,
+                    result.hand_landmarks,
+                    result.handedness,
+                    original_timestamp
+                )
+
+                if gesture_info:
+                    result_dict = {
+                        'gesture_info': gesture_info,
+                        'timestamp': original_timestamp,
+                        'processing_time': (time.time() - original_timestamp) * 1000 if original_timestamp else 0,
+                        'rgb_frame': rgb_frame  # Include original RGB frame for annotation
+                    }
+
+                    self.log_buffered_event(
+                        'CALLBACK_RESULT_PROCESSED',
+                        'Processed gesture callback results for publishing',
+                        gesture_name=gesture_info.get('gesture_name', 'unknown'),
+                        confidence=gesture_info.get('confidence', 0.0),
+                        handedness=gesture_info.get('handedness', 'unknown'),
+                        timestamp_ms=timestamp_ms
+                    )
+
+                    return result_dict
+                else:
+                    self.log_buffered_event(
+                        'CALLBACK_NO_STABLE_GESTURE',
+                        'No stable gesture detected in callback',
+                        timestamp_ms=timestamp_ms
+                    )
+                    return None
+            else:
+                self.log_buffered_event(
+                    'CALLBACK_NO_GESTURES',
+                    'No gestures found in callback',
+                    timestamp_ms=timestamp_ms
+                )
+                return None
+
+        except Exception as e:
+            self.log_buffered_event(
+                'CALLBACK_PROCESSING_ERROR',
+                f'Error processing callback results: {str(e)}',
+                timestamp_ms=timestamp_ms,
+                result_type=result_type
+            )
+            return None
+
+    def analyze_gesture_results(self, gestures, hand_landmarks_list, handedness_list, timestamp: float) -> Optional[Dict]:
+        """Analyze MediaPipe gesture recognition results - simplified like working sample."""
+        try:
+            # Simple processing like the working sample code
+            if gestures and len(gestures) > 0:
+                # Process first hand with gestures (like sample code)
+                for hand_index, hand_gestures in enumerate(gestures):
+                    if hand_gestures and len(hand_gestures) > 0:
+                        # Get the most confident gesture (like sample: gesture[0])
+                        best_gesture = hand_gestures[0]
+                        gesture_name = best_gesture.category_name
+                        confidence = round(best_gesture.score, 2)  # Round like sample
+
+                        # Get corresponding handedness
+                        hand_label = 'Unknown'
+                        if hand_index < len(handedness_list) and handedness_list[hand_index] and handedness_list[hand_index].classification:
+                            hand_label = handedness_list[hand_index].classification[0].label
+
+                        # Log detection (simplified - no stability checking initially)
+                        self.log_buffered_event(
+                            'GESTURE_DETECTED',
+                            f'Detected gesture: {gesture_name} ({confidence}) on {hand_label} hand',
+                            gesture=gesture_name,
+                            confidence=confidence,
+                            hand=hand_label,
+                            timestamp=timestamp
+                        )
+
+                        # Return immediately like sample (no complex stability logic)
+                        hand_landmarks = hand_landmarks_list[hand_index] if hand_index < len(hand_landmarks_list) else None
+                        return {
+                            'gesture_name': gesture_name,
+                            'confidence': confidence,
+                            'handedness': hand_label,
+                            'nav_command': self.GESTURE_COMMANDS.get(gesture_name, ''),
+                            'hand_center': self.calculate_hand_center(hand_landmarks.landmark) if hand_landmarks else Point(),
+                            'timestamp': timestamp
+                        }
+
+            # Log when no gestures found
+            self.log_buffered_event(
+                'NO_GESTURES_DETECTED',
+                f'No gestures in results - gestures: {len(gestures) if gestures else 0}, hands: {len(hand_landmarks_list) if hand_landmarks_list else 0}',
+                timestamp=timestamp
+            )
+            return None
+
+        except Exception as e:
+            self.log_buffered_event(
+                'GESTURE_ANALYSIS_ERROR',
+                f'Error analyzing gesture results: {str(e)}',
+                timestamp=timestamp
+            )
+            return None
+
     def detect_simple_gesture(self, landmarks) -> Optional[str]:
-        """Simple gesture detection based on finger positions."""
+        """Simple gesture detection based on finger positions (fallback method)."""
         try:
             # Get fingertip and pip (proximal interphalangeal) landmarks
             # Thumb: tip=4, pip=3
@@ -156,17 +479,17 @@ class GestureRecognitionNode(MediaPipeBaseNode):
             # Middle: tip=12, pip=10
             # Ring: tip=16, pip=14
             # Pinky: tip=20, pip=18
-            
+
             # Check if fingers are extended
             thumb_up = landmarks[4].y < landmarks[3].y
             index_up = landmarks[8].y < landmarks[6].y
             middle_up = landmarks[12].y < landmarks[10].y
             ring_up = landmarks[16].y < landmarks[14].y
             pinky_up = landmarks[20].y < landmarks[18].y
-            
+
             fingers_up = [thumb_up, index_up, middle_up, ring_up, pinky_up]
             total_fingers = sum(fingers_up)
-            
+
             # Simple gesture classification
             if total_fingers == 0:
                 return 'fist'
@@ -188,13 +511,16 @@ class GestureRecognitionNode(MediaPipeBaseNode):
                     return 'pointing_right'
                 else:
                     return 'pointing_up'
-            
+
             return None
-            
+
         except Exception as e:
-            self.get_logger().error(f'Error detecting gesture: {e}')
+            self.log_buffered_event(
+                'SIMPLE_GESTURE_ERROR',
+                f'Error detecting simple gesture: {str(e)}'
+            )
             return None
-    
+
     def calculate_hand_center(self, landmarks) -> Point:
         """Calculate the center point of the hand."""
         try:
@@ -202,91 +528,234 @@ class GestureRecognitionNode(MediaPipeBaseNode):
             x_sum = sum(lm.x for lm in landmarks)
             y_sum = sum(lm.y for lm in landmarks)
             z_sum = sum(lm.z for lm in landmarks)
-            
+
             num_landmarks = len(landmarks)
-            
+
             center = Point()
             center.x = x_sum / num_landmarks
             center.y = y_sum / num_landmarks
             center.z = z_sum / num_landmarks
-            
+
             return center
-            
+
         except Exception as e:
-            self.get_logger().error(f'Error calculating hand center: {e}')
+            self.log_buffered_event(
+                'HAND_CENTER_ERROR',
+                f'Error calculating hand center: {str(e)}'
+            )
             return Point()
-    
+
     def is_gesture_stable(self, gesture_name: str, timestamp: float) -> bool:
         """Check if gesture has been stable for minimum duration."""
-        stability_threshold = self.get_parameter('gesture_stability_threshold').value
-        
-        if self.current_gesture != gesture_name:
-            self.current_gesture = gesture_name
-            self.gesture_start_time = timestamp
-            return False
-        
-        if timestamp - self.gesture_start_time >= stability_threshold:
-            return True
-        
-        return False
-    
-    def publish_results(self, results: Dict, timestamp: float) -> None:
-        """Publish gesture recognition results."""
         try:
-            msg = MessageConverter.create_gesture_message(
-                results['gesture_name'],
-                results['confidence'],
-                results['handedness'],
-                results['nav_command']
+            stability_threshold = self.gesture_stability_threshold
+
+            if self.current_gesture != gesture_name:
+                self.current_gesture = gesture_name
+                self.gesture_start_time = timestamp
+                self.log_buffered_event(
+                    'GESTURE_CHANGE',
+                    f'Gesture changed to: {gesture_name}',
+                    timestamp=timestamp
+                )
+                return False
+
+            if self.gesture_start_time and timestamp - self.gesture_start_time >= stability_threshold:
+                self.log_buffered_event(
+                    'GESTURE_STABLE',
+                    f'Gesture {gesture_name} is stable',
+                    duration=timestamp - self.gesture_start_time,
+                    threshold=stability_threshold
+                )
+                return True
+
+            return False
+
+        except Exception as e:
+            self.log_buffered_event(
+                'STABILITY_CHECK_ERROR',
+                f'Error checking gesture stability: {str(e)}',
+                gesture_name=gesture_name,
+                timestamp=timestamp
             )
-            
+            return False
+
+    def publish_results(self, results: Dict, timestamp: float) -> None:
+        """Publish gesture recognition results and optionally annotated images."""
+        try:
+            # Extract gesture info from results
+            gesture_info = results['gesture_info']
+
+            # Convert to ROS message
+            msg = MessageConverter.create_gesture_message(
+                gesture_info['gesture_name'],
+                gesture_info['confidence'],
+                gesture_info['handedness'],
+                gesture_info['nav_command']
+            )
+
             # Set header and additional fields
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = 'camera_frame'
-            msg.hand_center = results['hand_center']
-            
+            msg.hand_center = gesture_info['hand_center']
+
             if self.gesture_start_time:
                 msg.gesture_duration = timestamp - self.gesture_start_time
-            
-            self.gesture_publisher.publish(msg)
-            
+
+            # Publish gesture results
+            self.gestures_publisher.publish(msg)
+
             # Log navigation gestures
             if msg.is_nav_gesture:
+                self.log_buffered_event(
+                    'NAVIGATION_GESTURE_PUBLISHED',
+                    f'Navigation gesture: {msg.gesture_name} -> {msg.nav_command}',
+                    confidence=msg.confidence,
+                    handedness=msg.handedness,
+                    duration=msg.gesture_duration
+                )
+
+                # Also log to console for important navigation commands
                 self.get_logger().info(
                     f'Navigation gesture: {msg.gesture_name} -> {msg.nav_command} '
-                    f'(confidence: {msg.confidence:.2f})'
+                    f'(confidence: {msg.confidence:.2f}, {msg.handedness} hand)'
                 )
-            
+            else:
+                self.log_buffered_event(
+                    'GESTURE_PUBLISHED',
+                    f'Gesture detected: {msg.gesture_name}',
+                    confidence=msg.confidence,
+                    handedness=msg.handedness
+                )
+
+            # Publish annotated image if enabled
+            if self.annotated_image_publisher and 'rgb_frame' in results:
+                try:
+                    annotated_frame = self.create_annotated_image(
+                        results['rgb_frame'],
+                        gesture_info
+                    )
+                    if annotated_frame is not None:
+                        annotated_msg = self.cv_bridge.cv2_to_imgmsg(annotated_frame, 'rgb8')
+                        annotated_msg.header = msg.header
+                        self.annotated_image_publisher.publish(annotated_msg)
+
+                        self.log_buffered_event(
+                            'ANNOTATED_IMAGE_PUBLISHED',
+                            'Published annotated gesture image',
+                            gesture_name=gesture_info['gesture_name']
+                        )
+                except Exception as e:
+                    self.log_buffered_event(
+                        'ANNOTATION_ERROR',
+                        f'Error creating annotated image: {str(e)}'
+                    )
+
         except Exception as e:
-            self.get_logger().error(f'Error publishing results: {e}')
-    
+            self.log_buffered_event(
+                'PUBLISHING_ERROR',
+                f'Error publishing results: {str(e)}',
+                timestamp=timestamp
+            )
+
+    def create_annotated_image(self, rgb_frame: np.ndarray, gesture_info: Dict) -> Optional[np.ndarray]:
+        """Create annotated image with gesture information."""
+        try:
+            # Create a copy for annotation
+            annotated_frame = rgb_frame.copy()
+
+            # Add gesture text overlay
+            gesture_text = f"{gesture_info['gesture_name']} ({gesture_info['confidence']:.2f})"
+            nav_command = gesture_info.get('nav_command', '')
+            if nav_command:
+                gesture_text += f" -> {nav_command}"
+
+            # Add text to image
+            cv2.putText(
+                annotated_frame,
+                gesture_text,
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),  # Green text
+                2
+            )
+
+            # Add handedness info
+            handedness_text = f"{gesture_info['handedness']} hand"
+            cv2.putText(
+                annotated_frame,
+                handedness_text,
+                (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),  # White text
+                1
+            )
+
+            return annotated_frame
+
+        except Exception as e:
+            self.log_buffered_event(
+                'ANNOTATION_CREATION_ERROR',
+                f'Error creating annotation: {str(e)}'
+            )
+            return None
+
     def cleanup(self) -> None:
         """Cleanup MediaPipe resources."""
         try:
-            if self.hands:
-                self.hands.close()
+            # Disable callback processing
+            self.disable_callback_processing()
+
+            if self.controller:
+                self.controller.close()
+                self.log_buffered_event(
+                    'CLEANUP_SUCCESS',
+                    'MediaPipe gesture controller closed successfully'
+                )
+
             super().cleanup()
+
         except Exception as e:
-            self.get_logger().error(f'Error during cleanup: {e}')
+            self.log_buffered_event(
+                'CLEANUP_ERROR',
+                f'Error during cleanup: {str(e)}'
+            )
 
 
 def main(args=None):
     """Main function for gesture recognition node."""
     import rclpy
-    
+
     rclpy.init(args=args)
-    
+
     try:
         node = GestureRecognitionNode()
+
+        # Log startup information
+        node.get_logger().info('Gesture Recognition Node started with callback architecture')
+        node.get_logger().info(f'Controller ready: {node.controller.is_ready() if node.controller else False}')
+        node.get_logger().info(f'Callback processing active: {node.is_callback_active()}')
+
         rclpy.spin(node)
+
     except KeyboardInterrupt:
-        pass
+        print('Gesture recognition node interrupted by user')
     except Exception as e:
         print(f'Error in gesture recognition node: {e}')
+        import traceback
+        traceback.print_exc()
     finally:
         if 'node' in locals():
-            node.cleanup()
-        rclpy.shutdown()
+            try:
+                node.cleanup()
+            except:
+                pass
+        try:
+            rclpy.shutdown()
+        except:
+            pass
 
 
 if __name__ == '__main__':
