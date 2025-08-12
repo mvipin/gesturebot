@@ -257,10 +257,14 @@ class MediaPipeBaseNode(Node, ABC):
         self.processing_times = []
         self.frame_counter = 0
         self.last_fps_time = time.time()
-        
+
         # Threading and synchronization
         self.processing_lock = threading.Lock()
         self.latest_results = None
+
+        # Set up callback mixin reference (all MediaPipe nodes use callbacks)
+        self._set_base_node_reference(self)
+        self.enable_callback_processing()
         
         # ROS 2 components
         self.cv_bridge = CvBridge()
@@ -354,10 +358,14 @@ class MediaPipeBaseNode(Node, ABC):
             self.get_logger().error(f'[{self.feature_name}] Error in image callback: {e}')
     
     def _process_frame_async(self, frame: np.ndarray, timestamp: float) -> None:
-        """Process frame in separate thread with detailed timing."""
+        """
+        Process frame in separate thread for callback-based MediaPipe nodes.
+        All publishing happens via MediaPipe callbacks, not from this method.
+        """
         if not self.processing_lock.acquire(blocking=False):
             # Skip frame if still processing previous one
-            self.stats.frames_skipped += 1
+            if self.enable_performance_tracking and self.stats:
+                self.stats.frames_skipped += 1
             return
 
         try:
@@ -367,27 +375,13 @@ class MediaPipeBaseNode(Node, ABC):
             if self.enable_performance_tracking and self.pipeline_timer:
                 self.pipeline_timer.mark_mediapipe_start()
 
-            # Call subclass implementation (includes MediaPipe processing)
+            # Call subclass implementation to submit frame to MediaPipe
+            # Results will be published via callback when ready
             results = self.process_frame(frame, timestamp)
 
-            # Mark post-processing start (only if performance tracking enabled)
-            if self.enable_performance_tracking and self.pipeline_timer:
-                self.pipeline_timer.mark_postprocessing_start()
-
-            # Publish results
+            # Store results for potential access (should be None for callback nodes)
             if results is not None:
-                self.publish_results(results, timestamp)
                 self.latest_results = results
-
-                # Update frame counters (only if performance tracking enabled)
-                if self.enable_performance_tracking and self.stats:
-                    self.stats.frames_processed += 1
-
-            # End frame timing and update statistics (only if performance tracking enabled)
-            if self.enable_performance_tracking and self.pipeline_timer:
-                self.pipeline_timer.end_frame()
-                timing_summary = self.pipeline_timer.get_summary()
-                self._update_enhanced_performance_stats(timing_summary)
 
             # Track legacy performance for compatibility
             processing_time = (time.perf_counter() - start_time) * 1000  # ms
@@ -397,9 +391,6 @@ class MediaPipeBaseNode(Node, ABC):
             self.get_logger().error(f'[{self.feature_name}] Error processing frame: {e}')
         finally:
             self.processing_lock.release()
-            # Reset timer for next frame (only if performance tracking enabled)
-            if self.enable_performance_tracking and self.pipeline_timer:
-                self.pipeline_timer.reset()
     
     def _update_enhanced_performance_stats(self, timing_summary: Dict[str, float]) -> None:
         """Update enhanced performance statistics with pipeline timing."""
@@ -532,30 +523,114 @@ class MediaPipeBaseNode(Node, ABC):
 
 class MediaPipeCallbackMixin:
     """
-    Mixin class for MediaPipe nodes that use callback-based processing.
-    Provides common callback handling functionality.
+    Mixin class for all MediaPipe nodes in GestureBot.
+    Provides callback-based processing with direct publishing from MediaPipe callback context.
+    All MediaPipe nodes (object detection, gesture recognition, etc.) use this architecture.
     """
-    
+
     def __init__(self):
-        self.callback_results = None
+        # Thread-safe callback state
         self.callback_lock = threading.Lock()
-    
+        self._callback_active = False
+
+        # Store reference to the base node for direct publishing
+        self._base_node_ref = None
+
+    def _set_base_node_reference(self, base_node):
+        """Set reference to base node for direct publishing from callback."""
+        self._base_node_ref = base_node
+
     def create_callback(self, result_type: str) -> Callable:
-        """Create a callback function for MediaPipe processing."""
+        """
+        Create a callback function that directly publishes results when ready.
+        This eliminates the buffering/fetching mechanism and timing misalignment.
+        """
         def callback(result, output_image, timestamp_ms):
+            # Thread-safe callback execution
             with self.callback_lock:
-                self.callback_results = {
-                    'result': result,
-                    'output_image': output_image,
-                    'timestamp': timestamp_ms,
-                    'type': result_type
-                }
+                if not self._callback_active:
+                    return  # Skip if callback processing is disabled
+
+                try:
+                    # Convert timestamp back to seconds for consistency
+                    timestamp_seconds = timestamp_ms / 1000.0
+
+                    # Process the MediaPipe results into the expected format
+                    processed_results = self._process_callback_results(
+                        result, output_image, timestamp_ms, result_type
+                    )
+
+                    if processed_results and self._base_node_ref:
+                        # Mark post-processing start for timing (if enabled)
+                        if (hasattr(self._base_node_ref, 'enable_performance_tracking') and
+                            self._base_node_ref.enable_performance_tracking and
+                            hasattr(self._base_node_ref, 'pipeline_timer') and
+                            self._base_node_ref.pipeline_timer):
+                            self._base_node_ref.pipeline_timer.mark_postprocessing_start()
+
+                        # Directly publish results from callback context
+                        self._base_node_ref.publish_results(processed_results, timestamp_seconds)
+
+                        # Update performance stats (if enabled)
+                        if (hasattr(self._base_node_ref, 'enable_performance_tracking') and
+                            self._base_node_ref.enable_performance_tracking and
+                            hasattr(self._base_node_ref, 'stats') and
+                            self._base_node_ref.stats):
+                            self._base_node_ref.stats.frames_processed += 1
+
+                        # End frame timing (if enabled)
+                        if (hasattr(self._base_node_ref, 'enable_performance_tracking') and
+                            self._base_node_ref.enable_performance_tracking and
+                            hasattr(self._base_node_ref, 'pipeline_timer') and
+                            self._base_node_ref.pipeline_timer):
+                            self._base_node_ref.pipeline_timer.end_frame()
+                            timing_summary = self._base_node_ref.pipeline_timer.get_summary()
+                            self._base_node_ref._update_enhanced_performance_stats(timing_summary)
+                            self._base_node_ref.pipeline_timer.reset()
+
+                        # Log successful callback processing
+                        if hasattr(self._base_node_ref, 'log_buffered_event'):
+                            self._base_node_ref.log_buffered_event(
+                                'CALLBACK_PUBLISHED',
+                                f'Direct publish from {result_type} callback',
+                                timestamp_ms=timestamp_ms,
+                                result_type=result_type
+                            )
+
+                except Exception as e:
+                    # Log callback errors through base node if available
+                    if self._base_node_ref and hasattr(self._base_node_ref, 'get_logger'):
+                        self._base_node_ref.get_logger().error(
+                            f'Error in MediaPipe callback: {e}'
+                        )
+                        if hasattr(self._base_node_ref, 'log_buffered_event'):
+                            self._base_node_ref.log_buffered_event(
+                                'CALLBACK_ERROR',
+                                f'Exception in {result_type} callback: {str(e)}',
+                                timestamp_ms=timestamp_ms,
+                                result_type=result_type
+                            )
 
         return callback
-    
-    def get_callback_results(self) -> Optional[Dict]:
-        """Get the latest callback results."""
+
+    def _process_callback_results(self, result, output_image, timestamp_ms: int, result_type: str) -> Optional[Dict]:
+        """
+        Process MediaPipe callback results into the format expected by publish_results().
+        Must be implemented by subclasses to handle specific result types.
+        """
+        raise NotImplementedError("Subclasses must implement _process_callback_results()")
+
+    def enable_callback_processing(self):
+        """Enable callback processing."""
         with self.callback_lock:
-            results = self.callback_results
-            self.callback_results = None  # Clear after reading
-            return results
+            self._callback_active = True
+
+    def disable_callback_processing(self):
+        """Disable callback processing."""
+        with self.callback_lock:
+            self._callback_active = False
+
+    def is_callback_active(self) -> bool:
+        """Check if callback processing is active."""
+        with self.callback_lock:
+            return self._callback_active

@@ -55,6 +55,9 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         # Flag to prevent premature MediaPipe initialization
         self._mediapipe_initialized = False
 
+        # Initialize MediaPipeCallbackMixin first (required for base class initialization)
+        MediaPipeCallbackMixin.__init__(self)
+
         # Initialize parent with default values (will be updated after parameter declaration)
         super().__init__(
             'object_detection_node',
@@ -64,7 +67,13 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             unlimited_buffer_mode=False,   # Default, will be updated
             enable_performance_tracking=False  # Default, will be updated
         )
-        MediaPipeCallbackMixin.__init__(self)
+
+        # Detection counter for periodic logging
+        self._detection_count = 0
+
+        # Frame storage for callback access
+        self._current_rgb_frame = None
+        self._current_frame_timestamp = None
 
         # Declare parameters for this node
         self.declare_parameter('unlimited_buffer_mode', False)
@@ -281,7 +290,10 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             return False
     
     def process_frame(self, frame: np.ndarray, timestamp: float) -> Optional[Dict]:
-        """Process frame for object detection."""
+        """
+        Process frame for object detection using async callback architecture.
+        This method only submits the frame to MediaPipe - results are published via callback.
+        """
         try:
             # Optimization: Check if frame is already in RGB format (camera_format=RGB888)
             # If camera outputs RGB888, we can skip the expensive BGR→RGB conversion
@@ -303,44 +315,29 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                     frame_shape=str(frame.shape)
                 )
 
+            # Store RGB frame for callback access
+            self._current_rgb_frame = rgb_frame
+            self._current_frame_timestamp = timestamp
+
             # Create MediaPipe image
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
-            # Run detection asynchronously
+            # Run detection asynchronously - results will be published via callback
             timestamp_ms = int(timestamp * 1000)
             if self.detector:
                 self.detector.detect_async(mp_image, timestamp_ms)
+                self.log_buffered_event(
+                    'ASYNC_DETECTION_SUBMITTED',
+                    'Submitted frame for async detection',
+                    timestamp_ms=timestamp_ms,
+                    frame_shape=str(rgb_frame.shape)
+                )
             else:
                 self.get_logger().error(f'No detector available!')
                 return None
 
-            # Get results from callback
-            callback_results = self.get_callback_results()
-
-            if callback_results and 'result' in callback_results and callback_results['result']:
-                detections = callback_results['result'].detections
-
-                if detections:
-                    result_dict = {
-                        'detections': detections,
-                        'timestamp': timestamp,
-                        'processing_time': (time.time() - timestamp) * 1000,
-                        'rgb_frame': rgb_frame  # Include original RGB frame for manual annotation
-                    }
-
-                    self.log_buffered_event(
-                        'RESULT_DICT_CREATED',
-                        'Created result dictionary with RGB frame for manual annotation',
-                        detections_count=len(detections),
-                        rgb_frame_shape=str(rgb_frame.shape)
-                    )
-
-                    return result_dict
-                else:
-                    self.get_logger().debug(f'[ObjectDetection] No detections found')
-            else:
-                self.get_logger().debug(f'[ObjectDetection] No callback results received')
-
+            # Return None for callback-based nodes to prevent duplicate publishing
+            # Actual results will be published via callback when ready
             return None
 
         except Exception as e:
@@ -431,6 +428,58 @@ class ObjectDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 )
 
         return annotated_image
+
+    def _process_callback_results(self, result, output_image, timestamp_ms: int, result_type: str) -> Optional[Dict]:
+        """
+        Process MediaPipe callback results into the format expected by publish_results().
+        This method is called from the MediaPipe callback thread.
+        """
+        try:
+            if result and result.detections:
+                # Use stored RGB frame from process_frame
+                rgb_frame = self._current_rgb_frame
+                original_timestamp = self._current_frame_timestamp
+
+                if rgb_frame is None:
+                    self.log_buffered_event(
+                        'CALLBACK_ERROR',
+                        'No RGB frame available for callback processing',
+                        timestamp_ms=timestamp_ms
+                    )
+                    return None
+
+                result_dict = {
+                    'detections': result.detections,
+                    'timestamp': original_timestamp,
+                    'processing_time': (time.time() - original_timestamp) * 1000 if original_timestamp else 0,
+                    'rgb_frame': rgb_frame  # Include original RGB frame for manual annotation
+                }
+
+                self.log_buffered_event(
+                    'CALLBACK_RESULT_PROCESSED',
+                    'Processed callback results for publishing',
+                    detections_count=len(result.detections),
+                    rgb_frame_shape=str(rgb_frame.shape),
+                    timestamp_ms=timestamp_ms
+                )
+
+                return result_dict
+            else:
+                self.log_buffered_event(
+                    'CALLBACK_NO_DETECTIONS',
+                    'No detections found in callback',
+                    timestamp_ms=timestamp_ms
+                )
+                return None
+
+        except Exception as e:
+            self.log_buffered_event(
+                'CALLBACK_PROCESSING_ERROR',
+                f'Error processing callback results: {str(e)}',
+                timestamp_ms=timestamp_ms,
+                result_type=result_type
+            )
+            return None
 
     def publish_results(self, results: Dict, timestamp: float) -> None:
         """Publish object detection results and optionally annotated images."""
