@@ -51,9 +51,15 @@ class ImageViewerNode(Node):
         )
         
         self.declare_parameter(
-            'show_fps_overlay', 
+            'show_fps_overlay',
             True,
             ParameterDescriptor(description='Show FPS overlay on displayed image')
+        )
+
+        self.declare_parameter(
+            'image_topic',
+            '/vision/objects/annotated',
+            ParameterDescriptor(description='ROS topic to subscribe to for images')
         )
         
         # Get parameters
@@ -62,6 +68,7 @@ class ImageViewerNode(Node):
         self.window_width = self.get_parameter('window_width').get_parameter_value().integer_value
         self.window_height = self.get_parameter('window_height').get_parameter_value().integer_value
         self.show_fps_overlay = self.get_parameter('show_fps_overlay').get_parameter_value().bool_value
+        self.image_topic = self.get_parameter('image_topic').get_parameter_value().string_value
         
         # Initialize CV bridge
         self.bridge = CvBridge()
@@ -87,10 +94,10 @@ class ImageViewerNode(Node):
             os.environ['QT_QPA_PLATFORM'] = 'offscreen'
             cv2.namedWindow(self.window_name, cv2.WINDOW_AUTOSIZE)
         
-        # Subscribe to annotated images topic
+        # Subscribe to specified image topic
         self.image_subscription = self.create_subscription(
             Image,
-            '/vision/objects/annotated',
+            self.image_topic,
             self.image_callback,
             10  # QoS depth
         )
@@ -100,7 +107,7 @@ class ImageViewerNode(Node):
         self.get_logger().info(f"  - Max display FPS: {self.display_fps}")
         self.get_logger().info(f"  - Window size: {self.window_width}x{self.window_height}")
         self.get_logger().info(f"  - FPS overlay: {self.show_fps_overlay}")
-        self.get_logger().info(f"  - Subscribed to: /vision/objects/annotated")
+        self.get_logger().info(f"  - Subscribed to: {self.image_topic}")
 
     def image_callback(self, msg: Image) -> None:
         """
@@ -116,7 +123,13 @@ class ImageViewerNode(Node):
                     return  # Skip this frame to maintain target FPS
             
             # Convert ROS Image to OpenCV format
-            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            # Handle different input formats (RGB888 from camera, BGR8 from annotated images)
+            if msg.encoding == 'rgb8':
+                # Raw camera feed is RGB, convert to BGR for OpenCV display
+                cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            else:
+                # Annotated images are already BGR8
+                cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             
             # Resize if specified
             if self.window_width > 0 and self.window_height > 0:

@@ -46,6 +46,12 @@ def generate_launch_description():
         default_value='true',
         description='Show FPS overlay on displayed image'
     )
+
+    declare_image_topic = DeclareLaunchArgument(
+        'image_topic',
+        default_value='/vision/objects/annotated',
+        description='ROS topic to subscribe to for images'
+    )
     
     # ========================================
     # IMAGE VIEWER NODE
@@ -61,6 +67,7 @@ def generate_launch_description():
             'window_width': LaunchConfiguration('window_width'),
             'window_height': LaunchConfiguration('window_height'),
             'show_fps_overlay': LaunchConfiguration('show_fps_overlay'),
+            'image_topic': LaunchConfiguration('image_topic'),
         }],
         output='screen'
     )
@@ -76,6 +83,7 @@ def generate_launch_description():
         declare_window_width,
         declare_window_height,
         declare_show_fps_overlay,
+        declare_image_topic,
         
         # Image viewer node
         image_viewer_node
