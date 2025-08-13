@@ -52,7 +52,6 @@ install(PROGRAMS
   src/nodes/gesture_recognition_node.py
   src/nodes/gesture_navigation_bridge.py
   src/nodes/image_viewer_node.py
-  src/nodes/gesture_image_viewer.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

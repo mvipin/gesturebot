@@ -144,8 +144,9 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         # Check if annotated image publishing is enabled
         try:
             publish_annotated = self.get_parameter('publish_annotated_images').value
-        except:
-            publish_annotated = False  # Default to disabled for gestures
+        except Exception as e:
+            self.get_logger().warn(f'Could not read publish_annotated_images parameter: {e}')
+            publish_annotated = True  # Default to enabled (consistent with launch file default)
 
         if publish_annotated:
             from sensor_msgs.msg import Image
@@ -730,9 +731,9 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 gesture_text,
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
+                0.5,  # Standardized font scale
                 (0, 255, 0),  # Green text
-                2
+                1  # Standardized thickness
             )
 
             # Add handedness info
@@ -864,7 +865,7 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                                 cv2.circle(image, (x, y), 10, (255, 255, 255), 2)  # White border
                                 # Optional: Add landmark indices if enabled
                                 if hasattr(self, '_show_landmark_indices') and self._show_landmark_indices:
-                                    cv2.putText(image, str(i), (x+12, y-12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                                    cv2.putText(image, str(i), (x+12, y-12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)  # Standardized thickness
 
                     except Exception as draw_error:
                         self.log_buffered_event(
@@ -911,9 +912,9 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                     str(idx),
                     (x + 5, y - 5),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.3,
+                    0.5,  # Standardized font scale
                     (255, 255, 0),  # Yellow text
-                    1
+                    1  # Already using standardized thickness
                 )
         except Exception as e:
             self.log_buffered_event(
@@ -951,9 +952,9 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 label,
                 (x_min, y_min - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
+                0.5,  # Already using standardized font scale
                 color,
-                2
+                1  # Standardized thickness
             )
 
         except Exception as e:

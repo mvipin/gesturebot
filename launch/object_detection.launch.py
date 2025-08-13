@@ -33,8 +33,8 @@ def generate_launch_description():
     
     declare_camera_format = DeclareLaunchArgument(
         'camera_format',
-        default_value='YUYV',
-        description='Camera pixel format (YUYV recommended for high fps)'
+        default_value='BGR888',
+        description='Camera pixel format (BGR888 for optimal object detection performance)'
     )
     
     declare_camera_width = DeclareLaunchArgument(
@@ -96,7 +96,7 @@ def generate_launch_description():
 
     declare_buffer_logging_enabled = DeclareLaunchArgument(
         'buffer_logging_enabled',
-        default_value='true',
+        default_value='false',
         description='Enable buffered logging system. When false, disables all buffering and only logs critical errors directly.'
     )
 
