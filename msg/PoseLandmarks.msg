@@ -1,30 +1,13 @@
-# Pose landmark detection result
+# Pose landmark detection results for multiple poses
 
 std_msgs/Header header
 
-# Pose detection confidence
-float64 confidence
-bool is_present
+# Timestamp from MediaPipe processing
+int64 timestamp_ms
 
-# Landmark points (33 landmarks for full body pose)
+# Flattened array of all pose landmarks (33 points per pose)
+# To get landmarks for pose N: landmarks[N*33:(N+1)*33]
 geometry_msgs/Point[] landmarks
 
-# Key body points
-geometry_msgs/Point nose
-geometry_msgs/Point left_shoulder
-geometry_msgs/Point right_shoulder
-geometry_msgs/Point left_elbow
-geometry_msgs/Point right_elbow
-geometry_msgs/Point left_wrist
-geometry_msgs/Point right_wrist
-geometry_msgs/Point left_hip
-geometry_msgs/Point right_hip
-geometry_msgs/Point left_knee
-geometry_msgs/Point right_knee
-geometry_msgs/Point left_ankle
-geometry_msgs/Point right_ankle
-
-# Pose analysis
-geometry_msgs/Vector3 body_orientation
-float64 body_height           # normalized height
-geometry_msgs/Point center_of_mass
+# Number of detected poses
+int32 num_poses

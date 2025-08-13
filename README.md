@@ -5,7 +5,7 @@
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10.18-green.svg)](https://mediapipe.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Comprehensive MediaPipe-based computer vision system for robotics applications, specifically designed for the GestureBot platform running on Raspberry Pi 5. Features real-time object detection, gesture recognition, hand/pose tracking, and seamless integration with ROS 2 Navigation stack for autonomous robot control through intuitive hand gestures.
+Comprehensive MediaPipe-based computer vision system for robotics applications, specifically designed for the GestureBot platform running on Raspberry Pi 5. Features real-time object detection, gesture recognition, pose detection with 33-point landmark tracking, and seamless integration with ROS 2 Navigation stack for autonomous robot control through intuitive hand gestures.
 
 > **📖 Complete Project Setup**: For full project setup instructions including virtual environment and camera system configuration, see the [main project README](../../../README.md).
 
@@ -28,11 +28,18 @@ ros2 launch gesturebot object_detection.launch.py \
     buffer_logging_enabled:=false \
     enable_performance_tracking:=false
 
-# View annotated object detection (in separate terminal)
+# Launch pose detection system with 33-point landmarks
+ros2 launch gesturebot pose_detection.launch.py
+
+# View annotated vision output (in separate terminal)
 ros2 launch gesturebot image_viewer.launch.py \
     image_topics:='["/vision/objects/annotated"]' \
     display_fps:=10.0 \
     show_fps_overlay:=true
+
+# View pose detection with skeleton visualization
+ros2 launch gesturebot image_viewer.launch.py \
+    image_topics:='["/vision/pose/annotated"]'
 
 # Test package functionality
 python3 -c "import rclpy, mediapipe; print('✅ gesturebot package ready!')"
@@ -151,7 +158,7 @@ python3 -c "import rclpy, mediapipe; print('✅ gesturebot package ready!')"
 
 **Physical Specifications:**
 - Camera resolution: 640x480 @ 30 FPS (configurable)
-- Processing capability: ~15 FPS with multiple MediaPipe features
+- Processing capability: Real-time processing with multiple MediaPipe features
 - Power consumption: ~8W total system power
 - Operating temperature: 0°C to 70°C
 
@@ -171,7 +178,7 @@ Pi Camera → camera_ros → ROS 2 Image → MediaPipe/OpenCV → Vision Results
 ```
 
 **Node Architecture:**
-- **Vision Nodes**: `object_detection_node`, `gesture_recognition_node`
+- **Vision Nodes**: `object_detection_node`, `gesture_recognition_node`, `pose_detection_node`
 - **Display System**: `unified_image_viewer` (replaces separate image viewers)
 - **Camera Interface**: `camera_ros` (source-built libcamera integration)
 - **Navigation Bridge**: `gesture_navigation_bridge`
@@ -183,6 +190,7 @@ Pi Camera → camera_ros → ROS 2 Image → MediaPipe/OpenCV → Vision Results
 
 **✅ Validated Performance (Pi 5):**
 - **Object Detection**: 5 FPS @ 640x480, optimized for stability
+- **Pose Detection**: 3-7 FPS @ 640x480, real-time 33-point landmarks
 - **Camera Pipeline**: RGB888 format with 20ms exposure time
 - **Manual Annotations**: <5ms additional processing overhead
 - **Detection Confidence**: 70-88% typical confidence levels
@@ -245,7 +253,7 @@ object_detection_node:
 - **Hand Landmarks**: 21-point hand skeleton with connections
 - **Dual Hand Support**: Track up to 2 hands simultaneously
 - **Confidence Threshold**: 0.5 (configurable)
-- **Performance**: 15 FPS @ 640x480 with BGR888 format
+- **Performance**: Real-time processing @ 640x480 with BGR888 format
 
 **Supported Gestures:**
 - 👍 **Thumbs Up**: Start navigation
@@ -302,16 +310,42 @@ gesture_recognition_node:
 - Fine motor control interfaces
 - Sign language recognition (future)
 
-### Pose Estimation
+### Pose Detection
 
-**Capabilities:**
-- **33 Body Landmarks**: Full body pose detection
-- **Real-time Tracking**: 30Hz pose estimation
-- **3D Pose Data**: Complete skeletal information
-- **Multi-person Support**: Track multiple people
+**✅ Implementation Status: COMPLETE**
+- **Model**: MediaPipe PoseLandmarker (pose_landmarker.task)
+- **33 Body Landmarks**: Full body pose detection with skeletal connections
+- **Multi-person Support**: Track up to 2 people simultaneously
+- **Real-time Performance**: 3-7 FPS @ 640x480 with RGB888 format
+- **Headless Operation**: No X11/UI dependencies required
 
-![Pose Estimation Demo](media/pose_estimation_demo.gif)
-<!-- TODO: Record full body pose estimation in action -->
+![Pose Detection Demo](media/demos/pose_detection_demo.gif)
+<!-- Real-time pose detection with 33-point skeleton visualization -->
+
+**✅ Pose Landmarks Visualization:**
+- **Complete Body Skeleton**: 33 landmark points with connecting lines
+- **Real-time Tracking**: MediaPipe LIVE_STREAM mode with detect_async()
+- **Annotated Image Publishing**: Enabled by default for skeleton visualization
+- **Multi-person Detection**: Simultaneous tracking of multiple people
+
+**Key Capabilities:**
+- Real-time human pose estimation with full body skeleton
+- 33-point landmark detection (head, torso, arms, legs)
+- Multi-person pose tracking (up to 2 poses simultaneously)
+- Integration with navigation for human-aware robot behavior
+- Headless operation suitable for embedded robotics applications
+
+**Configuration:**
+```yaml
+pose_detection_node:
+  ros__parameters:
+    confidence_threshold: 0.5
+    max_poses: 2
+    model_path: "models/pose_landmarker.task"
+    camera_format: "RGB888"
+    frame_rate: 5.0
+    publish_annotated_images: true    # Default enabled
+```
 
 ### Face Detection
 
@@ -346,6 +380,7 @@ The GestureBot vision system features a **unified image viewer architecture** th
 **Supported Topics:**
 - `/vision/objects/annotated` - Object detection with bounding boxes
 - `/vision/gestures/annotated` - Gesture recognition with hand landmarks
+- `/vision/pose/annotated` - Pose detection with 33-point skeleton visualization
 - `/camera/image_raw` - Raw camera feed
 - Any ROS 2 Image topic
 
@@ -361,6 +396,11 @@ ros2 launch gesturebot image_viewer.launch.py \
 ros2 launch gesturebot image_viewer.launch.py \
     image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated"]' \
     topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures"}'
+
+# Multi-modal vision: Objects, Gestures, and Pose Detection
+ros2 launch gesturebot image_viewer.launch.py \
+    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/pose/annotated"]' \
+    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/pose\/annotated": "Poses"}'
 
 # Raw camera feed
 ros2 launch gesturebot image_viewer.launch.py \
@@ -640,7 +680,7 @@ ros2 launch camera_ros camera_compressed_only.launch.py
 - camera_ros uses the existing source-built libcamera installation
 - Only one process can access the camera at a time (camera_ros OR rpicam-still, not both)
 - Build time: ~45 seconds on Raspberry Pi 5
-- Default resolution: 800x600 @ ~15 FPS
+- Default resolution: 800x600 @ stable frame rate
 - Compressed images recommended for network streaming
 colcon build --packages-select gesturebot
 
@@ -680,6 +720,11 @@ ros2 launch gesturebot gesture_recognition.launch.py \
     buffer_logging_enabled:=false \
     enable_performance_tracking:=false
 
+# Pose detection with 33-point skeleton (publish_annotated_images defaults to true)
+ros2 launch gesturebot pose_detection.launch.py \
+    buffer_logging_enabled:=false \
+    enable_performance_tracking:=false
+
 # Unified image viewer for visual feedback (in separate terminal)
 # Single topic display
 ros2 launch gesturebot image_viewer.launch.py \
@@ -691,6 +736,11 @@ ros2 launch gesturebot image_viewer.launch.py \
 ros2 launch gesturebot image_viewer.launch.py \
     image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated"]' \
     topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures"}' \
+    display_fps:=10.0
+
+# View pose detection output
+ros2 launch gesturebot image_viewer.launch.py \
+    image_topics:='["/vision/pose/annotated"]' \
     display_fps:=10.0
 ```
 
@@ -707,10 +757,10 @@ ros2 launch gesturebot image_viewer.launch.py \
     image_topics:='["/vision/gestures/annotated"]' \
     window_name:="GestureBot Gestures"
 
-# Or view both object detection and gestures (if both systems running)
+# Or view multiple vision systems simultaneously (if multiple systems running)
 ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated"]' \
-    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures"}'
+    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/pose/annotated"]' \
+    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/pose\/annotated": "Poses"}'
 ```
 
 ### Parameter Tuning
@@ -734,6 +784,12 @@ gesture_recognition_node:
     confidence_threshold: 0.7
     max_hands: 2
     enabled: true
+
+pose_detection_node:
+  ros__parameters:
+    confidence_threshold: 0.5
+    max_poses: 2
+    enabled: true
 ```
 
 ### Topic Monitoring
@@ -744,6 +800,7 @@ gesture_recognition_node:
 ros2 topic echo /vision/objects
 ros2 topic echo /vision/gestures
 ros2 topic echo /vision/hand_landmarks
+ros2 topic echo /vision/pose/landmarks
 
 # Performance monitoring
 ros2 topic echo /vision/*/performance
@@ -875,7 +932,7 @@ wget https://storage.googleapis.com/mediapipe-models/object_detector/efficientde
 
 ### Performance Problems
 
-**Poor FPS Performance:**
+**Poor Processing Performance:**
 ```bash
 # Check system resources
 htop
