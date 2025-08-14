@@ -439,6 +439,21 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             )
             return None
 
+    def extract_handedness(self, handedness_list, hand_index: int) -> str:
+        """Extract handedness from MediaPipe results using standard category_name format."""
+        if not handedness_list or hand_index >= len(handedness_list):
+            return 'Unknown'
+
+        try:
+            handedness_data = handedness_list[hand_index]
+            if hasattr(handedness_data, '__len__') and len(handedness_data) > 0:
+                if hasattr(handedness_data[0], 'category_name'):
+                    return handedness_data[0].category_name
+        except (IndexError, AttributeError):
+            pass
+
+        return 'Unknown'
+
     def analyze_gesture_results(self, gestures, hand_landmarks_list, handedness_list, timestamp: float) -> Optional[Dict]:
         """Analyze MediaPipe gesture recognition results - simplified like working sample."""
         try:
@@ -452,22 +467,8 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                         gesture_name = best_gesture.category_name
                         confidence = round(best_gesture.score, 2)  # Round like sample
 
-                        # Get corresponding handedness - fix the list access issue
-                        hand_label = 'Unknown'
-                        try:
-                            if (hand_index < len(handedness_list) and
-                                handedness_list[hand_index] and
-                                hasattr(handedness_list[hand_index], 'classification') and
-                                len(handedness_list[hand_index].classification) > 0):
-                                hand_label = handedness_list[hand_index].classification[0].label
-                        except (IndexError, AttributeError) as e:
-                            self.log_buffered_event(
-                                'HANDEDNESS_ACCESS_ERROR',
-                                f'Error accessing handedness: {str(e)} - using Unknown',
-                                hand_index=hand_index,
-                                handedness_list_len=len(handedness_list) if handedness_list else 0,
-                                timestamp=timestamp
-                            )
+                        # Get corresponding handedness - corrected MediaPipe access pattern
+                        hand_label = self.extract_handedness(handedness_list, hand_index)
 
                         # Log detection (simplified - no stability checking initially)
                         self.log_buffered_event(
