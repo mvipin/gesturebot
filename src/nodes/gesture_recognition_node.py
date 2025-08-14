@@ -61,17 +61,17 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         # Model path will be set after parameter declaration
         self.model_path = None
 
-        # Enhanced gesture state tracking for stability
+        # Enhanced gesture state tracking for MAXIMUM responsiveness
         self.current_gesture = None
         self.gesture_start_time = None
-        self.gesture_stability_threshold = 0.5  # seconds
-        self.gesture_consistency_count = 3  # consecutive detections required
-        self.gesture_transition_delay = 0.3  # minimum time between different gestures
+        self.gesture_stability_threshold = 0.1  # seconds (minimum viable for fastest confirmation)
+        self.gesture_consistency_count = 1  # single detection for immediate response
+        self.gesture_transition_delay = 0.05  # minimum viable delay for fastest switching
         self.last_transition_time = 0.0  # track last gesture change time
 
-        # Consistency tracking
+        # Consistency tracking (minimal for maximum speed)
         self.gesture_detection_history = []  # recent detections for consistency
-        self.max_history_size = 5  # keep last N detections
+        self.max_history_size = 2  # minimal history for fastest processing
 
         # Initialize MediaPipeCallbackMixin first (required for base class initialization)
         MediaPipeCallbackMixin.__init__(self)
@@ -97,8 +97,8 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
 
         # Note: confidence_threshold, max_hands, gesture_stability_threshold,
         # publish_annotated_images, debug_mode are declared by launch file
-        self.declare_parameter('gesture_consistency_count', 3)
-        self.declare_parameter('gesture_transition_delay', 0.3)
+        self.declare_parameter('gesture_consistency_count', 1)
+        self.declare_parameter('gesture_transition_delay', 0.05)
         # Declare model path parameter with descriptor (if not already declared)
         try:
             # Check if parameter already exists
@@ -188,19 +188,19 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 try:
                     self.gesture_stability_threshold = float(self.get_parameter('gesture_stability_threshold').value)
                 except:
-                    self.gesture_stability_threshold = 0.5  # Default value
+                    self.gesture_stability_threshold = 0.1  # Maximum responsiveness
                     self.get_logger().debug(f'Using default gesture_stability_threshold: {self.gesture_stability_threshold}')
 
                 try:
                     self.gesture_consistency_count = int(self.get_parameter('gesture_consistency_count').value)
                 except:
-                    self.gesture_consistency_count = 3
+                    self.gesture_consistency_count = 1  # Immediate response
                     self.get_logger().debug(f'Using default gesture_consistency_count: {self.gesture_consistency_count}')
 
                 try:
                     self.gesture_transition_delay = float(self.get_parameter('gesture_transition_delay').value)
                 except:
-                    self.gesture_transition_delay = 0.3
+                    self.gesture_transition_delay = 0.05  # Fastest viable transitions
                     self.get_logger().debug(f'Using default gesture_transition_delay: {self.gesture_transition_delay}')
 
                 # Update config with actual values for use in processing

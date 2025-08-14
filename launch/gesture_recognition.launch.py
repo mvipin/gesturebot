@@ -1,7 +1,25 @@
 #!/usr/bin/env python3
 """
-Launch file for gesture recognition with camera input.
-Based on the proven object detection launch architecture.
+Gesture Recognition Launch File for GestureBot
+Launches the gesture detection system (camera + gesture recognition).
+
+This modular launch file provides:
+- Camera node for image capture
+- Gesture recognition node for MediaPipe-based hand gesture detection
+- Publishes gesture results to /vision/gestures topic
+
+For robot motion control, launch the separate navigation bridge:
+    ros2 launch gesturebot gesture_navigation_bridge.launch.py
+
+Usage:
+    ros2 launch gesturebot gesture_recognition.launch.py
+
+For complete gesture-controlled robot motion:
+    # Terminal 1: Gesture detection
+    ros2 launch gesturebot gesture_recognition.launch.py
+
+    # Terminal 2: Motion control
+    ros2 launch gesturebot gesture_navigation_bridge.launch.py
 """
 
 from launch import LaunchDescription
@@ -62,6 +80,8 @@ def generate_launch_description():
         description='Enable gesture recognition node'
     )
 
+
+
     declare_confidence_threshold = DeclareLaunchArgument(
         'confidence_threshold',
         default_value='0.5',
@@ -76,8 +96,8 @@ def generate_launch_description():
 
     declare_gesture_stability_threshold = DeclareLaunchArgument(
         'gesture_stability_threshold',
-        default_value='0.5',
-        description='Minimum duration (seconds) for gesture stability'
+        default_value='0.1',
+        description='Minimum duration (seconds) for gesture stability (maximum responsiveness)'
     )
 
     declare_publish_annotated_images = DeclareLaunchArgument(
@@ -192,6 +212,8 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('enable_gesture_recognition')),
         output='screen'
     )
+
+
 
     # ========================================
     # NODE GROUPING
