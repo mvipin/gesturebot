@@ -61,10 +61,17 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         # Model path will be set after parameter declaration
         self.model_path = None
 
-        # Gesture state tracking
+        # Enhanced gesture state tracking for stability
         self.current_gesture = None
         self.gesture_start_time = None
         self.gesture_stability_threshold = 0.5  # seconds
+        self.gesture_consistency_count = 3  # consecutive detections required
+        self.gesture_transition_delay = 0.3  # minimum time between different gestures
+        self.last_transition_time = 0.0  # track last gesture change time
+
+        # Consistency tracking
+        self.gesture_detection_history = []  # recent detections for consistency
+        self.max_history_size = 5  # keep last N detections
 
         # Initialize MediaPipeCallbackMixin first (required for base class initialization)
         MediaPipeCallbackMixin.__init__(self)
@@ -90,6 +97,8 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
 
         # Note: confidence_threshold, max_hands, gesture_stability_threshold,
         # publish_annotated_images, debug_mode are declared by launch file
+        self.declare_parameter('gesture_consistency_count', 3)
+        self.declare_parameter('gesture_transition_delay', 0.3)
         # Declare model path parameter with descriptor (if not already declared)
         try:
             # Check if parameter already exists
@@ -181,6 +190,18 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 except:
                     self.gesture_stability_threshold = 0.5  # Default value
                     self.get_logger().debug(f'Using default gesture_stability_threshold: {self.gesture_stability_threshold}')
+
+                try:
+                    self.gesture_consistency_count = int(self.get_parameter('gesture_consistency_count').value)
+                except:
+                    self.gesture_consistency_count = 3
+                    self.get_logger().debug(f'Using default gesture_consistency_count: {self.gesture_consistency_count}')
+
+                try:
+                    self.gesture_transition_delay = float(self.get_parameter('gesture_transition_delay').value)
+                except:
+                    self.gesture_transition_delay = 0.3
+                    self.get_logger().debug(f'Using default gesture_transition_delay: {self.gesture_transition_delay}')
 
                 # Update config with actual values for use in processing
                 self.config.confidence_threshold = confidence_threshold
@@ -470,17 +491,37 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                         # Get corresponding handedness - corrected MediaPipe access pattern
                         hand_label = self.extract_handedness(handedness_list, hand_index)
 
-                        # Log detection (simplified - no stability checking initially)
+                        # Log raw detection
                         self.log_buffered_event(
-                            'GESTURE_DETECTED',
-                            f'Detected gesture: {gesture_name} ({confidence}) on {hand_label} hand',
+                            'GESTURE_DETECTED_RAW',
+                            f'Raw detection: {gesture_name} ({confidence}) on {hand_label} hand',
                             gesture=gesture_name,
                             confidence=confidence,
                             hand=hand_label,
                             timestamp=timestamp
                         )
 
-                        # Return immediately like sample (no complex stability logic)
+                        # Apply enhanced stability filtering
+                        if not self.check_gesture_stability(gesture_name, confidence, timestamp):
+                            self.log_buffered_event(
+                                'GESTURE_FILTERED_UNSTABLE',
+                                f'Filtered unstable gesture: {gesture_name}',
+                                gesture=gesture_name,
+                                confidence=confidence,
+                                timestamp=timestamp
+                            )
+                            return None  # Don't return unstable gestures
+
+                        # Log stable detection
+                        self.log_buffered_event(
+                            'GESTURE_DETECTED_STABLE',
+                            f'Stable gesture confirmed: {gesture_name} ({confidence}) on {hand_label} hand',
+                            gesture=gesture_name,
+                            confidence=confidence,
+                            hand=hand_label,
+                            timestamp=timestamp
+                        )
+
                         hand_landmarks = hand_landmarks_list[hand_index] if hand_index < len(hand_landmarks_list) else None
 
                         # Calculate hand center safely
@@ -597,6 +638,84 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             )
             return Point()
 
+    def check_gesture_stability(self, gesture_name: str, confidence: float, timestamp: float) -> bool:
+        """
+        Enhanced stability checking with consistency and transition delay.
+        Combines multiple stability criteria to prevent false positives.
+        """
+        try:
+            # Add current detection to history
+            self.gesture_detection_history.append({
+                'gesture': gesture_name,
+                'confidence': confidence,
+                'timestamp': timestamp
+            })
+
+            # Keep only recent history
+            if len(self.gesture_detection_history) > self.max_history_size:
+                self.gesture_detection_history = self.gesture_detection_history[-self.max_history_size:]
+
+            # Check 1: Consistency - same gesture detected N consecutive times
+            if not self._check_gesture_consistency(gesture_name):
+                return False
+
+            # Check 2: Transition delay - minimum time between different gestures
+            if not self._check_transition_delay(gesture_name, timestamp):
+                return False
+
+            # Check 3: Time-based stability - existing method
+            if not self.is_gesture_stable(gesture_name, timestamp):
+                return False
+
+            # All checks passed - gesture is stable
+            self.log_buffered_event(
+                'GESTURE_STABILITY_CONFIRMED',
+                f'Gesture {gesture_name} passed all stability checks',
+                consistency_count=len([h for h in self.gesture_detection_history if h['gesture'] == gesture_name]),
+                time_stable=timestamp - self.gesture_start_time if self.gesture_start_time else 0,
+                timestamp=timestamp
+            )
+            return True
+
+        except Exception as e:
+            self.log_buffered_event(
+                'STABILITY_CHECK_ERROR',
+                f'Error in enhanced stability check: {str(e)}',
+                gesture_name=gesture_name,
+                timestamp=timestamp
+            )
+            return False
+
+    def _check_gesture_consistency(self, gesture_name: str) -> bool:
+        """Check if gesture appears consistently in recent history."""
+        if len(self.gesture_detection_history) < self.gesture_consistency_count:
+            return False
+
+        # Check last N detections for consistency
+        recent_gestures = [h['gesture'] for h in self.gesture_detection_history[-self.gesture_consistency_count:]]
+        consistent_count = sum(1 for g in recent_gestures if g == gesture_name)
+
+        return consistent_count >= self.gesture_consistency_count
+
+    def _check_transition_delay(self, gesture_name: str, timestamp: float) -> bool:
+        """Check if enough time has passed since last gesture change."""
+        if self.current_gesture is None or self.current_gesture == gesture_name:
+            return True  # No previous gesture or same gesture
+
+        # Check if enough time has passed since last transition
+        time_since_transition = timestamp - self.last_transition_time
+        if time_since_transition < self.gesture_transition_delay:
+            self.log_buffered_event(
+                'GESTURE_TRANSITION_TOO_FAST',
+                f'Gesture transition too fast: {time_since_transition:.2f}s < {self.gesture_transition_delay}s',
+                from_gesture=self.current_gesture,
+                to_gesture=gesture_name,
+                timestamp=timestamp
+            )
+            return False
+
+        return True
+
     def is_gesture_stable(self, gesture_name: str, timestamp: float) -> bool:
         """Check if gesture has been stable for minimum duration."""
         try:
@@ -605,6 +724,7 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
             if self.current_gesture != gesture_name:
                 self.current_gesture = gesture_name
                 self.gesture_start_time = timestamp
+                self.last_transition_time = timestamp  # Track transition time
                 self.log_buffered_event(
                     'GESTURE_CHANGE',
                     f'Gesture changed to: {gesture_name}',
@@ -928,9 +1048,17 @@ class GestureRecognitionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         try:
             height, width = image.shape[:2]
 
+            # Handle both list format and MediaPipe landmark object format
+            if hasattr(hand_landmarks, 'landmark'):
+                # MediaPipe landmark object format
+                landmarks = hand_landmarks.landmark
+            else:
+                # List format (already converted)
+                landmarks = hand_landmarks
+
             # Calculate bounding box from landmarks
-            x_coords = [landmark.x * width for landmark in hand_landmarks.landmark]
-            y_coords = [landmark.y * height for landmark in hand_landmarks.landmark]
+            x_coords = [landmark.x * width for landmark in landmarks]
+            y_coords = [landmark.y * height for landmark in landmarks]
 
             x_min, x_max = int(min(x_coords)), int(max(x_coords))
             y_min, y_max = int(min(y_coords)), int(max(y_coords))
