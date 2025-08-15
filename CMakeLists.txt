@@ -54,6 +54,7 @@ install(PROGRAMS
   src/nodes/image_viewer_node.py
   src/nodes/pose_detection_node.py
   src/nodes/pose_navigation_bridge.py
+  src/nodes/person_following_controller.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
