@@ -53,6 +53,7 @@ install(PROGRAMS
   src/nodes/gesture_navigation_bridge.py
   src/nodes/image_viewer_node.py
   src/nodes/pose_detection_node.py
+  src/nodes/pose_navigation_bridge.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
