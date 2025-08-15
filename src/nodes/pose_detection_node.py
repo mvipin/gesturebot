@@ -29,7 +29,17 @@ class PoseDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
     """
     ROS 2 node for real-time pose detection using MediaPipe PoseLandmarker.
     Uses callback-based architecture for optimal performance and 33-point pose tracking.
+    Includes pose-to-action mapping for navigation control.
     """
+
+    # Simplified 4-pose navigation control system
+    POSE_ACTION_MAP = {
+        'arms_raised': 'forward',      # Both arms raised → move forward
+        'pointing_left': 'left',       # Left arm pointing → turn left
+        'pointing_right': 'right',     # Right arm pointing → turn right
+        't_pose': 'stop',              # T-pose → stop
+        'no_pose': 'stop'              # No clear pose → stop (default)
+    }
 
     def __init__(self):
         # Configuration for pose detection
@@ -50,6 +60,11 @@ class PoseDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
 
         # Current pose landmarks for visualization
         self._current_pose_landmarks = None
+
+        # Pose classification testing - simplified state tracking
+        self.current_pose_action = None
+        self.last_pose_action = None
+        self.pose_change_count = 0
 
         # Monotonic timestamp tracking for MediaPipe
         self._last_timestamp = 0
@@ -76,6 +91,11 @@ class PoseDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         self.declare_parameter('unlimited_buffer_mode', False)
         self.declare_parameter('buffer_logging_enabled', True)
         self.declare_parameter('enable_performance_tracking', False)
+
+        # Pose classification testing parameters (declared in launch file)
+        # Note: These parameters are declared in pose_detection.launch.py
+        self.declare_parameter('enable_detailed_coordinates', False)     # Enable detailed coordinate logging
+        self.declare_parameter('debug_rate_limit', 2.0)                  # Max debug messages per second
 
         # Note: num_poses, min_pose_detection_confidence, min_pose_presence_confidence,
         # min_tracking_confidence, output_segmentation_masks, publish_annotated_images,
@@ -114,6 +134,21 @@ class PoseDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         except Exception as e:
             self.get_logger().warn(f'Error configuring logging, using defaults: {e}')
 
+        # Update pose classification debug settings
+        try:
+            self.enable_pose_debug = self.get_parameter('enable_pose_classification_debug').value
+            self.enable_detailed_coordinates = self.get_parameter('enable_detailed_coordinates').value
+            self.debug_rate_limit = self.get_parameter('debug_rate_limit').value
+        except Exception as e:
+            self.enable_pose_debug = True  # Default to enabled for testing
+            self.enable_detailed_coordinates = False  # Default to disabled
+            self.debug_rate_limit = 2.0  # Default rate limit
+            self.get_logger().warn(f'Error reading pose debug parameters, using defaults: {e}')
+
+        # Debug rate limiting
+        self.last_debug_time = 0.0
+        self.last_debug_pose = None
+
         # Log the buffer configuration
         buffer_stats = self.get_buffer_stats()
         self.get_logger().info(f"BufferedLogger initialized: {buffer_stats}")
@@ -121,7 +156,7 @@ class PoseDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         # Publishers
         self.poses_publisher = self.create_publisher(
             PoseLandmarks,
-            '/vision/pose',
+            '/vision/poses',
             self.result_qos
         )
 
@@ -274,14 +309,44 @@ class PoseDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
         pass
 
     def _process_callback_results(self, result, output_image: mp.Image, timestamp_ms: int):
-        """Process MediaPipe pose detection results from callback."""
+        """Process MediaPipe pose detection results from callback - TESTING MODE."""
         try:
             # Store current pose landmarks for visualization
             self._current_pose_landmarks = result.pose_landmarks if result.pose_landmarks else None
 
-            # Create and publish pose landmarks message
+            # Process pose classification if poses detected
             if result.pose_landmarks:
-                pose_msg = self._create_pose_landmarks_message(result, timestamp_ms)
+                # Classify pose action from landmarks
+                pose_action = self._classify_pose_action(result.pose_landmarks)
+
+                # Log debug information (rate-limited and concise)
+                self._log_pose_debug(pose_action, result.pose_landmarks)
+
+                # Track pose changes for statistics
+                if pose_action != self.current_pose_action:
+                    self.last_pose_action = self.current_pose_action
+                    self.current_pose_action = pose_action
+                    self.pose_change_count += 1
+
+                # Create and publish pose landmarks message with classification
+                pose_msg = self._create_pose_landmarks_message(result, timestamp_ms, pose_action)
+                self.poses_publisher.publish(pose_msg)
+
+            else:
+                # No poses detected
+                pose_action = 'no_pose'
+
+                # Log debug information (rate-limited)
+                self._log_pose_debug(pose_action, [])
+
+                # Track pose changes
+                if self.current_pose_action != 'no_pose':
+                    self.last_pose_action = self.current_pose_action
+                    self.current_pose_action = 'no_pose'
+                    self.pose_change_count += 1
+
+                # Publish empty message with no_pose action
+                pose_msg = self._create_pose_landmarks_message(result, timestamp_ms, pose_action)
                 self.poses_publisher.publish(pose_msg)
 
             # Create and publish annotated image if enabled
@@ -292,22 +357,195 @@ class PoseDetectionNode(MediaPipeBaseNode, MediaPipeCallbackMixin):
                 annotated_msg.header.frame_id = 'camera_frame'
                 self.annotated_image_publisher.publish(annotated_msg)
 
-            # Log successful processing
+            # Log successful processing (reduced verbosity)
             self.log_buffered_event('POSE_DETECTION_SUCCESS',
                                   f'Detected {len(result.pose_landmarks) if result.pose_landmarks else 0} poses')
 
         except Exception as e:
             self.log_buffered_event('CALLBACK_PROCESSING_ERROR', f'Error in callback: {str(e)}')
 
-    def _create_pose_landmarks_message(self, result, timestamp_ms: int) -> PoseLandmarks:
-        """Create ROS message from MediaPipe pose detection results."""
+    def _classify_pose_action(self, pose_landmarks_list) -> str:
+        """
+        Classify pose action from MediaPipe pose landmarks with concise debug logging.
+        Returns action string for navigation control.
+        """
+        try:
+            if not pose_landmarks_list or len(pose_landmarks_list) == 0:
+                return 'no_pose'
+
+            # Use the first detected pose for action classification
+            pose_landmarks = pose_landmarks_list[0]
+
+            # Handle both possible MediaPipe pose landmark structures
+            landmarks_list = None
+            try:
+                if hasattr(pose_landmarks, '__iter__') and not hasattr(pose_landmarks, 'landmark'):
+                    landmarks_list = pose_landmarks
+                else:
+                    landmarks_list = pose_landmarks.landmark
+            except Exception:
+                return 'no_pose'
+
+            if not landmarks_list or len(landmarks_list) < 33:
+                return 'no_pose'
+
+            # Extract key landmarks (MediaPipe pose landmark indices)
+            left_shoulder = landmarks_list[11]
+            right_shoulder = landmarks_list[12]
+            left_wrist = landmarks_list[15]
+            right_wrist = landmarks_list[16]
+
+            # Calculate adaptive thresholds based on shoulder width
+            shoulder_width = abs(right_shoulder.x - left_shoulder.x)
+            extension_threshold = max(0.08, shoulder_width * 0.6)
+            horizontal_tolerance = max(0.08, shoulder_width * 0.4)
+            pointing_extension_threshold = max(0.06, shoulder_width * 0.4)
+            pointing_horizontal_tolerance = max(0.12, shoulder_width * 0.8)
+
+            # POSE CLASSIFICATION LOGIC
+
+            # 1. Check for ARMS RAISED (both wrists above shoulders)
+            left_wrist_raised = left_wrist.y < left_shoulder.y - 0.05
+            right_wrist_raised = right_wrist.y < right_shoulder.y - 0.05
+
+            if left_wrist_raised and right_wrist_raised:
+                detected_pose = 'arms_raised'
+                self._log_pose_debug(detected_pose, {
+                    'shoulder_width': shoulder_width,
+                    'left_wrist_diff': left_shoulder.y - left_wrist.y,
+                    'right_wrist_diff': right_shoulder.y - right_wrist.y
+                })
+                return detected_pose
+
+            # 2. Check for T-POSE (both arms horizontal and extended)
+            left_arm_horizontal = abs(left_wrist.y - left_shoulder.y) < horizontal_tolerance
+            right_arm_horizontal = abs(right_wrist.y - right_shoulder.y) < horizontal_tolerance
+            left_arm_extended_out = left_wrist.x < left_shoulder.x - extension_threshold
+            right_arm_extended_out = right_wrist.x > right_shoulder.x + extension_threshold
+
+            if (left_arm_horizontal and right_arm_horizontal and
+                left_arm_extended_out and right_arm_extended_out):
+                detected_pose = 't_pose'
+                self._log_pose_debug(detected_pose, {
+                    'shoulder_width': shoulder_width,
+                    'extension_threshold': extension_threshold,
+                    'horizontal_tolerance': horizontal_tolerance,
+                    'left_horizontal': left_arm_horizontal,
+                    'right_horizontal': right_arm_horizontal,
+                    'left_extended': left_arm_extended_out,
+                    'right_extended': right_arm_extended_out
+                })
+                return detected_pose
+
+            # 3. Check for POINTING gestures (single arm extended horizontally)
+            # Note: Removed pointing_forward as it was unreliable - keeping only left/right
+            left_arm_pointing = (left_wrist.x < left_shoulder.x - pointing_extension_threshold and
+                               abs(left_wrist.y - left_shoulder.y) < pointing_horizontal_tolerance)
+            right_arm_pointing = (right_wrist.x > right_shoulder.x + pointing_extension_threshold and
+                                abs(right_wrist.y - right_shoulder.y) < pointing_horizontal_tolerance)
+
+            # Only detect single-arm pointing (left OR right, not both)
+            if left_arm_pointing and not right_arm_pointing:
+                detected_pose = 'pointing_left'
+                self._log_pose_debug(detected_pose, {
+                    'shoulder_width': shoulder_width,
+                    'pointing_threshold': pointing_extension_threshold,
+                    'left_extended': True,
+                    'right_extended': False
+                })
+                return detected_pose
+            elif right_arm_pointing and not left_arm_pointing:
+                detected_pose = 'pointing_right'
+                self._log_pose_debug(detected_pose, {
+                    'shoulder_width': shoulder_width,
+                    'pointing_threshold': pointing_extension_threshold,
+                    'left_extended': False,
+                    'right_extended': True
+                })
+                return detected_pose
+            # Note: If both arms are pointing, treat as no_pose (ambiguous gesture)
+
+            # 4. Default to no clear pose detected
+            detected_pose = 'no_pose'
+            self._log_pose_debug(detected_pose, {
+                'shoulder_width': shoulder_width,
+                'reason': 'No pose criteria met (4-pose system: arms_raised, pointing_left, pointing_right, t_pose)'
+            })
+            return detected_pose
+
+        except Exception as e:
+            self.log_buffered_event('POSE_CLASSIFICATION_ERROR',
+                                  f'Error classifying pose: {str(e)}')
+            return 'no_pose'
+
+    def _log_pose_debug(self, pose_action: str, debug_info: dict) -> None:
+        """Log pose classification debug information with rate limiting and concise format."""
+        if not self.enable_pose_debug:
+            return
+
+        # Check if we should log based on rate limiting and pose changes
+        if not self._should_log_debug(pose_action):
+            return
+
+        # Create concise debug message
+        if pose_action == 'no_pose':
+            debug_msg = f"🎯 POSE: {pose_action.upper()} | {debug_info.get('reason', 'Unknown')}"
+        else:
+            # Format key metrics in a single line
+            metrics = []
+            if 'shoulder_width' in debug_info:
+                metrics.append(f"width={debug_info['shoulder_width']:.3f}")
+            if 'extension_threshold' in debug_info:
+                metrics.append(f"ext_thresh={debug_info['extension_threshold']:.3f}")
+            if 'pointing_threshold' in debug_info:
+                metrics.append(f"point_thresh={debug_info['pointing_threshold']:.3f}")
+
+            debug_msg = f"🎯 POSE: {pose_action.upper()} | {' | '.join(metrics)}"
+
+            # Add detailed coordinates only if enabled
+            if self.enable_detailed_coordinates:
+                coord_info = []
+                for key, value in debug_info.items():
+                    if key not in ['shoulder_width', 'extension_threshold', 'pointing_threshold']:
+                        if isinstance(value, bool):
+                            coord_info.append(f"{key}={value}")
+                        elif isinstance(value, float):
+                            coord_info.append(f"{key}={value:.3f}")
+                if coord_info:
+                    debug_msg += f" | {' | '.join(coord_info)}"
+
+        self.get_logger().info(debug_msg)
+
+    def _should_log_debug(self, pose_action: str) -> bool:
+        """Check if we should log debug information based on rate limiting and pose changes."""
+        import time
+        current_time = time.time()
+
+        # Only log if pose changed or enough time has passed
+        pose_changed = pose_action != self.last_debug_pose
+        time_elapsed = current_time - self.last_debug_time >= (1.0 / self.debug_rate_limit)
+
+        if pose_changed or time_elapsed:
+            self.last_debug_time = current_time
+            self.last_debug_pose = pose_action
+            return True
+
+        return False
+
+    def _create_pose_landmarks_message(self, result, timestamp_ms: int, pose_action: str = 'no_pose') -> PoseLandmarks:
+        """Create ROS message from MediaPipe pose detection results with pose classification."""
         msg = PoseLandmarks()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'camera_frame'
         msg.timestamp_ms = timestamp_ms
 
+        # Add pose classification and navigation command
+        msg.pose_action = pose_action
+        msg.nav_command = self.POSE_ACTION_MAP.get(pose_action, 'stop')
+
         if result.pose_landmarks:
             msg.num_poses = len(result.pose_landmarks)
+
             # Flatten all pose landmarks into a single array
             for pose_landmarks in result.pose_landmarks:
                 # Handle both possible MediaPipe pose landmark structures

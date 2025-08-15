@@ -113,6 +113,24 @@ def generate_launch_description():
         default_value='false',
         description='Enable detailed performance tracking and metrics'
     )
+
+    declare_pose_classification_debug = DeclareLaunchArgument(
+        'enable_pose_classification_debug',
+        default_value='true',
+        description='Enable pose classification debug output (rate-limited and concise)'
+    )
+
+    declare_detailed_coordinates = DeclareLaunchArgument(
+        'enable_detailed_coordinates',
+        default_value='false',
+        description='Enable detailed coordinate logging in debug output'
+    )
+
+    declare_debug_rate_limit = DeclareLaunchArgument(
+        'debug_rate_limit',
+        default_value='2.0',
+        description='Maximum debug messages per second (rate limiting)'
+    )
     
     # ========================================
     # CAMERA NODE (Direct launch without image viewer)
@@ -163,6 +181,11 @@ def generate_launch_description():
             'buffer_logging_enabled': LaunchConfiguration('buffer_logging_enabled'),
             'unlimited_buffer_mode': LaunchConfiguration('unlimited_buffer_mode'),
             'enable_performance_tracking': LaunchConfiguration('enable_performance_tracking'),
+
+            # Debug parameters
+            'enable_pose_classification_debug': LaunchConfiguration('enable_pose_classification_debug'),
+            'enable_detailed_coordinates': LaunchConfiguration('enable_detailed_coordinates'),
+            'debug_rate_limit': LaunchConfiguration('debug_rate_limit'),
         }],
         output='screen'
     )
@@ -188,6 +211,9 @@ def generate_launch_description():
         declare_buffer_logging_enabled,
         declare_unlimited_buffer_mode,
         declare_enable_performance_tracking,
+        declare_pose_classification_debug,
+        declare_detailed_coordinates,
+        declare_debug_rate_limit,
         
         # Nodes
         camera_node,

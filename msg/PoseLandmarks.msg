@@ -11,3 +11,11 @@ geometry_msgs/Point[] landmarks
 
 # Number of detected poses
 int32 num_poses
+
+# Classified pose action for navigation control
+# Possible values: 'arms_raised', 'pointing_left', 'pointing_right', 't_pose', 'no_pose'
+string pose_action
+
+# Navigation command derived from pose action
+# Possible values: 'forward', 'left', 'right', 'stop'
+string nav_command
