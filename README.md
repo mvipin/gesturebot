@@ -5,7 +5,7 @@
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10.18-green.svg)](https://mediapipe.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Comprehensive MediaPipe-based computer vision system for robotics applications, specifically designed for the GestureBot platform running on Raspberry Pi 5. Features real-time object detection, gesture recognition, pose detection with 33-point landmark tracking, and seamless integration with ROS 2 Navigation stack for autonomous robot control through intuitive hand gestures.
+Comprehensive MediaPipe-based computer vision system for robotics applications, specifically designed for the GestureBot platform running on Raspberry Pi 5. Features real-time object detection, gesture recognition, pose detection with 33-point landmark tracking, **4-pose navigation system**, **standalone person following**, and seamless integration with ROS 2 Navigation stack for autonomous robot control through intuitive hand gestures and body poses.
 
 > **📖 Complete Project Setup**: For full project setup instructions including virtual environment and camera system configuration, see the [main project README](../../../README.md).
 
@@ -30,6 +30,12 @@ ros2 launch gesturebot object_detection.launch.py \
 
 # Launch pose detection system with 33-point landmarks
 ros2 launch gesturebot pose_detection.launch.py
+
+# Launch 4-pose navigation system (NEW!)
+ros2 launch gesturebot pose_navigation_bridge.launch.py
+
+# Launch standalone person following system (NEW!)
+ros2 launch gesturebot person_following.launch.py
 
 # View annotated vision output (in separate terminal)
 ros2 launch gesturebot image_viewer.launch.py \
@@ -101,6 +107,8 @@ python3 -c "import rclpy, mediapipe; print('✅ gesturebot package ready!')"
 
 ### **5. [Navigation Integration](#5-navigation-integration)**
   - [Gesture-based Robot Control](#gesture-based-robot-control)
+  - [4-Pose Navigation System](#4-pose-navigation-system)
+  - [Standalone Person Following](#standalone-person-following)
   - [Safety Systems](#safety-systems)
   - [Emergency Stop Features](#emergency-stop-features)
 
@@ -181,7 +189,7 @@ Pi Camera → camera_ros → ROS 2 Image → MediaPipe/OpenCV → Vision Results
 - **Vision Nodes**: `object_detection_node`, `gesture_recognition_node`, `pose_detection_node`
 - **Display System**: `unified_image_viewer` (replaces separate image viewers)
 - **Camera Interface**: `camera_ros` (source-built libcamera integration)
-- **Navigation Bridge**: `gesture_navigation_bridge`
+- **Navigation Bridges**: `gesture_navigation_bridge`, `pose_navigation_bridge`, `person_following_controller`
 
 ![Processing Pipeline Visualization](media/processing_pipeline.png)
 <!-- TODO: Create visual flowchart of the complete processing pipeline -->
@@ -201,6 +209,9 @@ Pi Camera → camera_ros → ROS 2 Image → MediaPipe/OpenCV → Vision Results
 - **Custom Visualization**: Manual OpenCV annotations with color coding
 - **Optimized Configuration**: 5 FPS target with 20ms exposure (10x faster than original)
 - **Multi-object Detection**: Simultaneous detection of person, keyboard, tv, etc.
+- **4-Pose Navigation**: Real-time pose classification with direct robot control
+- **Person Following**: Autonomous person tracking with smooth motion control
+- **Multi-Modal Control**: Gesture, pose, and person following navigation options
 
 ![Performance Benchmarks](media/benchmarks/performance_charts.png)
 <!-- Performance benchmark charts showing 5 FPS stable operation with manual annotations -->
@@ -332,6 +343,7 @@ gesture_recognition_node:
 - Real-time human pose estimation with full body skeleton
 - 33-point landmark detection (head, torso, arms, legs)
 - Multi-person pose tracking (up to 2 poses simultaneously)
+- **4-pose classification system** for direct robot control
 - Integration with navigation for human-aware robot behavior
 - Headless operation suitable for embedded robotics applications
 
@@ -492,6 +504,113 @@ ball_tracking_node:
 
 ![Gesture Control Demo](media/gesture_control_demo.gif)
 <!-- TODO: Record complete gesture control sequence -->
+
+### 4-Pose Navigation System
+
+**✅ Implementation Status: COMPLETE**
+
+The GestureBot now features a **simplified 4-pose navigation system** that provides direct robot control through body poses, offering an alternative to gesture-based control for situations where hand gestures may not be practical.
+
+![4-Pose Navigation Demo](media/demos/4_pose_navigation_demo.gif)
+<!-- TODO: Record 4-pose navigation demonstration -->
+
+**Supported Poses:**
+| Pose | Action | Navigation Command | Robot Behavior |
+|------|--------|-------------------|----------------|
+| 🙌 **Arms Raised** | `arms_raised` | `forward` | Move forward at 0.3 m/s |
+| 👈 **Pointing Left** | `pointing_left` | `left` | Turn left at 0.8 rad/s |
+| 👉 **Pointing Right** | `pointing_right` | `right` | Turn right at 0.8 rad/s |
+| 🤸 **T-Pose** | `t_pose` | `stop` | Emergency stop |
+
+**Key Features:**
+- **Simplified Control**: Only 4 reliable poses for robust operation
+- **Real-time Classification**: Pose detection with immediate action classification
+- **Velocity Smoothing**: 25 Hz acceleration limiting for stable motion
+- **Safety Integration**: T-pose provides immediate emergency stop
+- **Timeout Protection**: Auto-stop if no poses detected for 2 seconds
+
+**Launch Commands:**
+```bash
+# Terminal 1: Start pose detection with classification
+ros2 launch gesturebot pose_detection.launch.py
+
+# Terminal 2: Start 4-pose navigation bridge
+ros2 launch gesturebot pose_navigation_bridge.launch.py
+
+# Terminal 3: View pose detection with skeleton
+ros2 launch gesturebot image_viewer.launch.py \
+    image_topics:='["/vision/pose/annotated"]'
+```
+
+**Configuration:**
+```yaml
+pose_navigation_bridge:
+  ros__parameters:
+    pose_confidence_threshold: 0.7
+    max_linear_velocity: 0.3      # m/s
+    max_angular_velocity: 0.8     # rad/s
+    pose_timeout: 2.0             # seconds
+    motion_smoothing_enabled: true
+```
+
+### Standalone Person Following
+
+**✅ Implementation Status: COMPLETE**
+
+The GestureBot features an advanced **standalone person following system** that uses object detection to autonomously follow a person while maintaining safe distances and smooth motion control.
+
+![Person Following Demo](media/demos/person_following_demo.gif)
+<!-- TODO: Record person following demonstration -->
+
+**Key Capabilities:**
+- **Autonomous Person Detection**: Uses existing object detection system to identify and track people
+- **Distance Maintenance**: Maintains optimal 1.5m following distance with 0.3m tolerance
+- **Smooth Motion Control**: 25 Hz velocity smoothing with acceleration limiting (1.0 m/s² linear, 2.0 rad/s² angular)
+- **Person Centering**: Automatically centers the target person in camera view
+- **Safety Systems**: Multiple safety layers including minimum safe distance (0.8m) and maximum follow distance (5.0m)
+- **Target Selection**: Intelligent person selection based on size, position, and stability
+- **Service-Based Activation**: Easy activation/deactivation via ROS 2 services
+
+**Following Behavior:**
+- **Target Distance**: 1.5 meters (configurable)
+- **Safe Distance**: Won't approach closer than 0.8 meters
+- **Max Follow Distance**: Stops following if person exceeds 5.0 meters
+- **Motion Smoothing**: Gradual acceleration/deceleration for stable following
+- **Person Lost Timeout**: Auto-deactivates if person not detected for 3 seconds
+
+**Launch Commands:**
+```bash
+# Terminal 1: Start object detection system
+ros2 launch gesturebot object_detection.launch.py
+
+# Terminal 2: Start person following controller
+ros2 launch gesturebot person_following.launch.py
+
+# Terminal 3: Activate person following mode
+ros2 service call /follow_mode/activate std_srvs/srv/SetBool "data: true"
+
+# Terminal 4: Monitor following status
+ros2 topic echo /cmd_vel
+```
+
+**Configuration:**
+```yaml
+person_following_controller:
+  ros__parameters:
+    target_distance: 1.5          # meters
+    min_safe_distance: 0.8        # meters
+    max_follow_distance: 5.0      # meters
+    person_confidence_threshold: 0.6
+    max_linear_velocity: 0.25     # m/s
+    max_angular_velocity: 0.6     # rad/s
+    control_hold_duration: 0.5    # seconds
+```
+
+**Safety Features:**
+- **Multi-layered Safety**: Distance limits, confidence thresholds, timeout protection
+- **Emergency Stop Integration**: Immediate stop via emergency stop topic
+- **Backward Motion**: Safely backs away if person gets too close
+- **Stable Target Selection**: Prevents rapid switching between multiple people
 
 ### Safety Systems
 
@@ -725,6 +844,18 @@ ros2 launch gesturebot pose_detection.launch.py \
     buffer_logging_enabled:=false \
     enable_performance_tracking:=false
 
+# 4-pose navigation system (NEW!)
+ros2 launch gesturebot pose_navigation_bridge.launch.py \
+    pose_confidence_threshold:=0.7 \
+    max_linear_velocity:=0.3 \
+    max_angular_velocity:=0.8
+
+# Standalone person following system (NEW!)
+ros2 launch gesturebot person_following.launch.py \
+    target_distance:=1.5 \
+    min_safe_distance:=0.8 \
+    max_follow_distance:=5.0
+
 # Unified image viewer for visual feedback (in separate terminal)
 # Single topic display
 ros2 launch gesturebot image_viewer.launch.py \
@@ -744,7 +875,9 @@ ros2 launch gesturebot image_viewer.launch.py \
     display_fps:=10.0
 ```
 
-**Complete System Launch (Recommended):**
+**Complete System Launch Examples:**
+
+**Option 1: Gesture-Based Navigation (Original)**
 ```bash
 # Terminal 1: Start gesture recognition system
 ros2 launch gesturebot gesture_recognition.launch.py \
@@ -752,12 +885,49 @@ ros2 launch gesturebot gesture_recognition.launch.py \
     buffer_logging_enabled:=false \
     enable_performance_tracking:=false
 
-# Terminal 2: Start unified image viewer for gestures
+# Terminal 2: Start gesture navigation bridge
+ros2 launch gesturebot gesture_navigation_bridge.launch.py
+
+# Terminal 3: Start unified image viewer for gestures
 ros2 launch gesturebot image_viewer.launch.py \
     image_topics:='["/vision/gestures/annotated"]' \
     window_name:="GestureBot Gestures"
+```
 
-# Or view multiple vision systems simultaneously (if multiple systems running)
+**Option 2: 4-Pose Navigation (NEW!)**
+```bash
+# Terminal 1: Start pose detection with classification
+ros2 launch gesturebot pose_detection.launch.py
+
+# Terminal 2: Start pose navigation bridge
+ros2 launch gesturebot pose_navigation_bridge.launch.py
+
+# Terminal 3: View pose detection with skeleton
+ros2 launch gesturebot image_viewer.launch.py \
+    image_topics:='["/vision/pose/annotated"]' \
+    window_name:="GestureBot Poses"
+```
+
+**Option 3: Standalone Person Following (NEW!)**
+```bash
+# Terminal 1: Start object detection system
+ros2 launch gesturebot object_detection.launch.py
+
+# Terminal 2: Start person following controller
+ros2 launch gesturebot person_following.launch.py
+
+# Terminal 3: Activate person following mode
+ros2 service call /follow_mode/activate std_srvs/srv/SetBool "data: true"
+
+# Terminal 4: View object detection with person tracking
+ros2 launch gesturebot image_viewer.launch.py \
+    image_topics:='["/vision/objects/annotated"]' \
+    window_name:="Person Following"
+```
+
+**Multi-Modal Vision System:**
+```bash
+# View multiple vision systems simultaneously (if multiple systems running)
 ros2 launch gesturebot image_viewer.launch.py \
     image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/pose/annotated"]' \
     topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/pose\/annotated": "Poses"}'
@@ -800,6 +970,7 @@ pose_detection_node:
 ros2 topic echo /vision/objects
 ros2 topic echo /vision/gestures
 ros2 topic echo /vision/hand_landmarks
+ros2 topic echo /vision/poses          # NEW: Pose detection with classification
 ros2 topic echo /vision/pose/landmarks
 
 # Performance monitoring
@@ -808,6 +979,10 @@ ros2 topic echo /vision/*/performance
 # Navigation commands
 ros2 topic echo /cmd_vel
 ros2 topic echo /emergency_stop
+
+# Person following (NEW!)
+ros2 service call /follow_mode/activate std_srvs/srv/SetBool "data: true"
+ros2 service call /follow_mode/activate std_srvs/srv/SetBool "data: false"
 ```
 
 ---
