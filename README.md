@@ -12,8 +12,6 @@ Comprehensive MediaPipe-based computer vision system for robotics applications, 
 
 ## 🚀 Quick Start
 
-> **⚠️ Important**: This package requires proper virtual environment setup. See the [main project README](../../../README.md) for complete setup instructions.
-
 ### For Existing Setup
 ```bash
 # Activate GestureBot environment (includes virtual env + ROS 2)
