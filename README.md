@@ -7,8 +7,6 @@
 
 Comprehensive MediaPipe-based computer vision system for robotics applications, specifically designed for the GestureBot platform running on Raspberry Pi 5. Features real-time object detection, gesture recognition, pose detection with 33-point landmark tracking, **4-pose navigation system**, **standalone person following**, and seamless integration with ROS 2 Navigation stack for autonomous robot control through intuitive hand gestures and body poses.
 
-> **📖 Complete Project Setup**: For full project setup instructions including virtual environment and camera system configuration, see the [main project README](../../../README.md).
-
 ![GestureBot Vision System Overview](media/system_overview.png)
 <!-- TODO: Capture system overview photo showing Pi 5, camera, and robot platform -->
 
