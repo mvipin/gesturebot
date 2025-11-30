@@ -5,10 +5,28 @@
 [![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10.18-green.svg)](https://mediapipe.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Comprehensive MediaPipe-based computer vision system for robotics applications, specifically designed for the GestureBot platform running on Raspberry Pi 5. Features real-time object detection, gesture recognition, pose detection with 33-point landmark tracking, **4-pose navigation system**, **standalone person following**, and seamless integration with ROS 2 Navigation stack for autonomous robot control through intuitive hand gestures and body poses.
+<table>
+<tr>
+<td width="300">
+<img src="media/hardware/gesturebot.jpg" alt="GestureBot Hardware" width="280"/>
+</td>
+<td valign="top">
 
-![GestureBot Vision System Overview](media/system_overview.png)
-<!-- TODO: Capture system overview photo showing Pi 5, camera, and robot platform -->
+**Comprehensive MediaPipe-based computer vision system for robotics applications**, specifically designed for the GestureBot platform running on Raspberry Pi 5.
+
+**Key Features:**
+- 🎯 Real-time object detection
+- 🖐️ Gesture recognition with hand landmarks
+- 🏃 Pose detection with 33-point landmark tracking
+- 🧭 **4-pose navigation system**
+- 👤 **Standalone person following**
+- 🤖 Seamless ROS 2 Navigation stack integration
+
+Control your robot through intuitive hand gestures and body poses!
+
+</td>
+</tr>
+</table>
 
 ## 🚀 Quick Start
 
@@ -41,7 +59,7 @@ ros2 launch gesturebot image_viewer.launch.py \
 
 # View pose detection with skeleton visualization
 ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/pose/annotated"]'
+    image_topics:='["/vision/poses/annotated"]'
 
 # Test package functionality
 python3 -c "import rclpy, mediapipe; print('✅ gesturebot package ready!')"
@@ -79,63 +97,70 @@ python3 -c "import rclpy, mediapipe; print('✅ gesturebot package ready!')"
 
 - [🚀 Quick Start](#-quick-start)
 
-### **1. [Vision System Overview](#1-vision-system-overview)**
+- **[1. Vision System Overview](#1-vision-system-overview)**
+  - [Modular Architecture](#️-modular-architecture)
   - [Hardware Components](#hardware-components)
+    - [Hardware Architecture Diagram](#hardware-architecture-diagram)
+    - [Component Details](#component-details)
+    - [CAD Design](#cad-design)
+    - [Assembled Hardware](#assembled-hardware)
   - [Software Architecture](#software-architecture)
-  - [Performance Specifications](#performance-specifications)
+    - [Software Stack Diagram](#software-stack-diagram)
+    - [Software Layer Description](#software-layer-description)
+    - [Core ROS 2 Packages](#core-ros-2-packages)
 
-### **2. [MediaPipe Features](#2-mediapipe-features)**
+- **[2. MediaPipe Features](#2-mediapipe-features)**
   - [Object Detection](#object-detection)
   - [Gesture Recognition](#gesture-recognition)
-  - [Hand Landmark Detection](#hand-landmark-detection)
-  - [Pose Estimation](#pose-estimation)
-  - [Face Detection](#face-detection)
+  - [Pose Detection](#pose-detection)
 
-### **3. [Unified Image Viewer System](#3-unified-image-viewer-system)**
+- **[3. Unified Image Viewer System](#3-unified-image-viewer-system)**
   - [Multi-topic Display](#multi-topic-display)
   - [Custom Window Management](#custom-window-management)
   - [Performance Optimizations](#performance-optimizations)
 
-### **4. [OpenCV Integration](#4-opencv-integration)**
+- **[4. OpenCV Integration](#4-opencv-integration)**
   - [Ball Tracking](#ball-tracking)
   - [Blob Detection](#blob-detection)
   - [Color-based Tracking](#color-based-tracking)
 
-### **5. [Navigation Integration](#5-navigation-integration)**
+- **[5. Navigation Integration](#5-navigation-integration)**
   - [Gesture-based Robot Control](#gesture-based-robot-control)
   - [4-Pose Navigation System](#4-pose-navigation-system)
   - [Standalone Person Following](#standalone-person-following)
   - [Safety Systems](#safety-systems)
   - [Emergency Stop Features](#emergency-stop-features)
 
-### **6. [Performance & Optimization](#6-performance--optimization)**
+- **[6. Performance & Optimization](#6-performance--optimization)**
+  - [Performance Specifications](#performance-specifications)
   - [Resource Management](#resource-management)
   - [Adaptive Processing](#adaptive-processing)
   - [Benchmarking Tools](#benchmarking-tools)
 
-### **7. [Installation & Setup](#7-installation--setup)**
+- **[7. Installation & Setup](#7-installation--setup)**
   - [Prerequisites](#prerequisites)
-  - [Automated Setup](#automated-setup)
-  - [Manual Configuration](#manual-configuration)
+  - [Package-Specific Setup](#package-specific-setup)
+  - [Dependencies](#dependencies)
+  - [Camera_ros Build Instructions](#camera_ros-build-instructions)
 
-### **8. [Configuration & Usage](#8-configuration--usage)**
+- **[8. Configuration & Usage](#8-configuration--usage)**
   - [Launch Files](#launch-files)
   - [Parameter Tuning](#parameter-tuning)
   - [Topic Monitoring](#topic-monitoring)
 
-### **9. [Development & Testing](#9-development--testing)**
+- **[9. Development & Testing](#9-development--testing)**
   - [Adding New Features](#adding-new-features)
   - [Testing Framework](#testing-framework)
   - [Performance Benchmarking](#performance-benchmarking)
 
-### **10. [Troubleshooting](#10-troubleshooting)**
+- **[10. Troubleshooting](#10-troubleshooting)**
   - [Common Issues](#common-issues)
   - [Performance Problems](#performance-problems)
   - [Hardware Debugging](#hardware-debugging)
   - [Build Dependencies](#build-dependencies)
   - [Parameter Type Issues](#parameter-type-issues)
 
-### **Additional Resources**
+- **Additional Resources**
   - [API Documentation](#api-documentation)
   - [Contributing](#contributing)
   - [License](#license)
@@ -144,102 +169,241 @@ python3 -c "import rclpy, mediapipe; print('✅ gesturebot package ready!')"
 
 ## 1. Vision System Overview
 
-**🏗️ Modular Architecture**: The GestureBot vision system uses a modular launch file architecture where each vision feature can be launched independently for better development, testing, and debugging workflow.
+### 🏗️ Modular Architecture
 
-![System Architecture Diagram](media/system_architecture/modular_architecture_diagram.png)
-<!-- System architecture diagram showing modular launch file structure -->
+The GestureBot vision system is built on a **modular architecture** designed for flexibility, reusability, and ease of development:
+
+| Modularity Aspect | Description |
+|-------------------|-------------|
+| **Launch File Modularity** | Each vision feature (object detection, gesture recognition, pose detection) can be launched independently for isolated development, testing, and debugging |
+| **MediaPipe Implementation** | The `ros2_mediapipe` package provides a reusable vision processing framework showcased through GestureBot |
+| **Controller Modularity** | Navigation bridges are independent, swappable controllers that translate vision results to robot commands |
+| **Visualization Modularity** | Unified image viewer supports multiple annotated image topics through a single configurable node |
+
+**ros2_mediapipe Package Design:**
+- **Base Class Architecture**: `MediaPipeBaseNode` provides common infrastructure (camera subscription, image conversion, async processing)
+- **Independent Vision Nodes**: `ObjectDetectionNode`, `GestureRecognitionNode`, `PoseDetectionNode` extend the base class
+- **Reusable Message Definitions**: Custom ROS 2 messages (`DetectedObjects`, `HandGesture`, `PoseLandmarks`) for structured vision data
+- **Separation of Concerns**: Vision processing (`ros2_mediapipe`) is decoupled from application logic (`gesturebot`)
 
 ### Hardware Components
 
-**Compute Platform:**
-- **Raspberry Pi 5**: 8GB RAM, ARM Cortex-A76 quad-core processor
-- **Pi Camera Module 3**: 12MP sensor with autofocus, 30 FPS capability
-- **MicroSD Card**: 64GB+ Class 10 for optimal performance
-- **Cooling**: Active cooling recommended for sustained processing
+The GestureBot platform integrates several hardware components for autonomous vision-based navigation and human-robot interaction.
 
-![Hardware Setup](media/hardware_setup.jpg)
-<!-- TODO: Photograph complete hardware setup with labeled components -->
+#### Hardware Architecture Diagram
 
-**Physical Specifications:**
-- Camera resolution: 640x480 @ 30 FPS (configurable)
-- Processing capability: Real-time processing with multiple MediaPipe features
-- Power consumption: ~8W total system power
-- Operating temperature: 0°C to 70°C
+```mermaid
+flowchart TB
+    subgraph POWER["⚡ Power System"]
+        BATT["🔋 LiPo Battery<br/>2000mAh 11.1V 3S"]
+        VREG["Voltage Regulator<br/>20A 300W CC CV<br/>DC 6-40V → 5V"]
+    end
+
+    subgraph COMPUTE["🧠 Compute"]
+        PI5["Raspberry Pi 5<br/>8GB RAM<br/>ARM Cortex-A76<br/>VideoCore VII GPU<br/>2.4GHz Quad-Core 64-bit"]
+    end
+
+    subgraph PERIPHERALS["📷 Peripherals"]
+        CAM["Arducam 8MP<br/>IMX219 1080P"]
+        LCD["7in LCD Display"]
+        LED["MAX7219 LED Matrix<br/>8x8 Dot Matrix"]
+    end
+
+    subgraph MOBILE["🤖 Mobile Platform"]
+        ROBOT["iRobot Create 2<br/>Self-Powered"]
+    end
+
+    BATT -->|"11.1V"| VREG
+    VREG -->|"5V"| PI5
+    VREG -->|"5V"| LCD
+    VREG -->|"5V"| LED
+    CAM -->|"CSI-2"| PI5
+    PI5 -->|"UART"| ROBOT
+    PI5 -->|"SPI"| LED
+    PI5 -->|"HDMI"| LCD
+```
+
+#### Component Details
+
+| Component | Specifications | Interface |
+|-----------|---------------|-----------|
+| **LiPo Battery** | 2000mAh, 11.1V, 3S configuration | Powers voltage regulator |
+| **Raspberry Pi 5** | 8GB RAM, ARM Cortex-A76 quad-core, hardware acceleration for image processing | Central compute hub |
+| **Arducam 8MP Camera** | IMX219 sensor, 1080P @ 30fps, autofocus | CSI-2 ribbon cable |
+| **iRobot Create 2** | Mobile robot platform, self-powered battery | UART serial interface |
+| **7" LCD Display** | Touch-capable display for debugging/visualization | HDMI |
+| **MAX7219 LED Matrix** | 8x8 dot matrix for status indicators | SPI via 3.3V-to-5V level shifter |
+| **Voltage Regulator** | 20A 300W CC CV Step Down (DC 6-40V to 5V), short circuit protection | Powers Pi 5, LCD, LED Matrix |
+
+#### Hardware Connections
+
+- **LiPo Battery → Voltage Regulator**: 11.1V input to the DC 6-40V input range of the step-down module
+- **Voltage Regulator → Components**: Stable 5V output to Raspberry Pi 5, LCD screen, and LED matrix with short circuit protection
+- **Camera → Pi 5**: CSI-2 ribbon cable provides high-bandwidth image data transfer
+- **LED Matrix → Pi 5**: SPI interface through a 3.3V-to-5V level shifter (Pi GPIO is 3.3V, MAX7219 requires 5V logic)
+- **iRobot Create 2 → Pi 5**: UART serial interface for motor commands and odometry feedback
+
+#### CAD Design
+
+| Image | Description |
+|-------|-------------|
+| ![CAD 1](media/hardware/cad1.jpeg) | **Component Overview**: LED matrix display, 7" LCD screen, and iRobot Create 2 mobile platform integration |
+| ![CAD 2](media/hardware/cad2.jpeg) | **Electronics Detail**: Raspberry Pi 5, voltage regulator |
+| ![CAD 3](media/hardware/cad3.jpeg) | **Enclosure Design**: Mounting structure and component housing |
+
+#### Assembled Hardware
+
+| Image | Description |
+|-------|-------------|
+| ![Enclosure Front](media/hardware/enclosurefront.jpg) | **Enclosure Front**: 3D-printed housing front view with camera, LCD, and LED matrix |
+| ![Enclosure Back](media/hardware/enclosureback.jpg) | **Enclosure Back**: 3D-printed housing back view with mounted components |
+| ![Mobile Platform](media/hardware/irobot.jpg) | **Mobile Platform**: iRobot Create 2 |
 
 ### Software Architecture
 
-**Core ROS 2 Packages:**
-- `gesturebot.vision_core`: Shared utilities and base classes
-- `gesturebot`: Main package with nodes and messages
-- `cv_bridge`: OpenCV-ROS 2 image conversion
-- `image_transport`: Efficient image streaming
+The software stack is organized into distinct layers, from low-level camera drivers to high-level navigation controllers.
 
-**Processing Pipeline:**
+#### Software Stack Diagram
+
+```mermaid
+flowchart TB
+    subgraph INPUT["🔧 Camera Driver"]
+        LIBCAM["libcamera<br/>(C++ Camera Driver)"]
+        CAMROS["camera_ros<br/>(ROS 2 Camera Node)"]
+    end
+
+    subgraph INTEGRATION["🔗 Integration Layer"]
+        CVBRIDGE["cv_bridge<br/>(ROS ↔ OpenCV)"]
+    end
+
+    subgraph VISION["📦 ros2_mediapipe Package"]
+        subgraph LIBS["Libraries"]
+            OPENCV["OpenCV<br/>(Image Processing)"]
+            MP["MediaPipe<br/>(ML Inference)"]
+        end
+
+        subgraph MODELS["ML Models"]
+            M_OBJ["efficientdet.tflite<br/>(Object Detection)"]
+            M_GES["gesture_recognizer.task<br/>(Gesture Recognition)"]
+            M_POSE["pose_landmarker.task<br/>(Pose Detection)"]
+        end
+
+        subgraph NODES["Vision Nodes"]
+            N_OBJ["ObjectDetectionNode"]
+            N_GES["GestureRecognitionNode"]
+            N_POSE["PoseDetectionNode"]
+        end
+    end
+
+    subgraph APP["📦 gesturebot Package"]
+        subgraph CTRL["Navigation Controllers"]
+            C_FOLLOW["PersonFollowingController"]
+            C_GES["GestureNavigationBridge"]
+            C_POSE["PoseNavigationBridge"]
+        end
+
+        VIEWER["UnifiedImageViewer<br/>(OpenCV Display)"]
+    end
+
+    subgraph OUTPUT["🔧 Robot Driver"]
+        CREATEDRV["create_driver<br/>(iRobot Create 2)"]
+    end
+
+    LIBCAM --> CAMROS
+    CAMROS -->|"/camera/image_raw"| CVBRIDGE
+    CVBRIDGE --> NODES
+
+    LIBS --> NODES
+    MODELS --> NODES
+
+    N_OBJ -->|"/vision/objects"| C_FOLLOW
+    N_GES -->|"/vision/gestures"| C_GES
+    N_POSE -->|"/vision/poses"| C_POSE
+
+    N_OBJ -->|"/vision/objects/annotated"| VIEWER
+    N_GES -->|"/vision/gestures/annotated"| VIEWER
+    N_POSE -->|"/vision/poses/annotated"| VIEWER
+
+    CTRL -->|"/cmd_vel"| CREATEDRV
 ```
-Pi Camera → camera_ros → ROS 2 Image → MediaPipe/OpenCV → Vision Results → Navigation Commands
-                                    ↓
-                            UnifiedImageViewer → Multi-topic Display
-```
 
-**Node Architecture:**
-- **Vision Nodes**: `object_detection_node`, `gesture_recognition_node`, `pose_detection_node`
-- **Display System**: `unified_image_viewer` (replaces separate image viewers)
-- **Camera Interface**: `camera_ros` (source-built libcamera integration)
-- **Navigation Bridges**: `gesture_navigation_bridge`, `pose_navigation_bridge`, `person_following_controller`
+#### Software Layer Description
 
-![Processing Pipeline Visualization](media/processing_pipeline.png)
-<!-- TODO: Create visual flowchart of the complete processing pipeline -->
+| Layer | Components | Description |
+|-------|------------|-------------|
+| **Driver Layer** | `libcamera`, `create_driver` | Low-level hardware access: camera via libcamera/camera_ros publishing `/camera/image_raw`, robot control via create_driver subscribing to `/cmd_vel` |
+| **Integration Layer** | `cv_bridge` | Converts between ROS 2 Image messages and OpenCV image formats for vision processing |
+| **Vision Processing** | `ros2_mediapipe` | MediaPipe for ML inference (uses TensorFlow Lite models internally), OpenCV for image manipulation, three specialized vision nodes |
+| **Application Layer** | `gesturebot` | Navigation controllers translating vision results to robot commands, unified image viewer for visualization |
 
-### Performance Specifications
+#### Core ROS 2 Packages
 
-**✅ Validated Performance (Pi 5):**
-- **Object Detection**: 5 FPS @ 640x480, optimized for stability
-- **Pose Detection**: 3-7 FPS @ 640x480, real-time 33-point landmarks
-- **Camera Pipeline**: RGB888 format with 20ms exposure time
-- **Manual Annotations**: <5ms additional processing overhead
-- **Detection Confidence**: 70-88% typical confidence levels
-- **System Stability**: 100% uptime during extended testing
-
-**✅ Current Achievements:**
-- **Real-time Processing**: MediaPipe LIVE_STREAM mode with detect_async()
-- **Custom Visualization**: Manual OpenCV annotations with color coding
-- **Optimized Configuration**: 5 FPS target with 20ms exposure (10x faster than original)
-- **Multi-object Detection**: Simultaneous detection of person, keyboard, tv, etc.
-- **4-Pose Navigation**: Real-time pose classification with direct robot control
-- **Person Following**: Autonomous person tracking with smooth motion control
-- **Multi-Modal Control**: Gesture, pose, and person following navigation options
-
-![Performance Benchmarks](media/benchmarks/performance_charts.png)
-<!-- Performance benchmark charts showing 5 FPS stable operation with manual annotations -->
+| Package | Description |
+|---------|-------------|
+| `ros2_mediapipe` | Vision processing nodes and custom messages (DetectedObjects, HandGesture, PoseLandmarks) |
+| `gesturebot` | Application layer with navigation bridges, controllers, and launch files |
+| `camera_ros` | C++ camera driver with libcamera integration |
+| `create_driver` | iRobot Create 2 driver (from `create_robot` meta-package, uses `libcreate`) |
+| `cv_bridge` | OpenCV-ROS 2 image conversion utility |
 
 ---
 
 ## 2. MediaPipe Features
 
+The GestureBot vision system leverages three core MediaPipe capabilities, each with a dedicated data flow from camera input to robot control output.
+
 ### Object Detection
 
-**✅ Implementation Status: COMPLETE**
+| *Screen display* | *Click to watch on YouTube* |
+|:---------------------:|:---------------------:|
+| ![Object detection](media/demos/screen_matrix.gif) | [![Zoomed in](https://img.youtube.com/vi/_qbPXN9j0Wc/0.jpg)](https://youtu.be/_qbPXN9j0Wc) |
+| *Screen display* | *Click to watch on YouTube* |
+
 - **Model**: EfficientDet Lite (TensorFlow Lite optimized)
 - **Classes**: 80 COCO dataset objects (person, car, bottle, etc.)
 - **Confidence Threshold**: 0.5 (configurable)
 - **Max Results**: 5 objects per frame
 - **Performance**: 5 FPS @ 640x480 with 20ms exposure time
 
-![Object Detection Demo](media/demos/object_detection_demo.gif)
-<!-- Video demonstration of real-time object detection with manual annotations -->
+#### Data Flow: Object Detection → Person Following
+
+```mermaid
+flowchart LR
+    subgraph INPUT["📷 Input"]
+        CAM["Pi Camera"]
+        CAMROS["camera_ros"]
+    end
+
+    subgraph VISION["🔍 Vision Processing"]
+        TOPIC1["/camera/image_raw"]
+        OBJ["object_detection_node<br/>(EfficientDet Lite)"]
+        TOPIC2["/vision/objects<br/>(DetectedObjects)"]
+    end
+
+    subgraph CONTROL["🎮 Control"]
+        FOLLOW["person_following_controller"]
+        TOPIC3["/cmd_vel<br/>(Twist)"]
+    end
+
+    subgraph OUTPUT["🤖 Output"]
+        ROBOT["iRobot Create 2"]
+    end
+
+    CAM --> CAMROS --> TOPIC1 --> OBJ --> TOPIC2 --> FOLLOW --> TOPIC3 --> ROBOT
+```
+
+**Data Flow Description:**
+1. **Camera Capture**: Pi Camera captures frames via `camera_ros` node
+2. **Image Publishing**: Raw images published to `/camera/image_raw` topic
+3. **Object Detection**: `object_detection_node` processes frames using EfficientDet Lite model
+4. **Detection Results**: Detected objects (especially "person" class) published to `/vision/objects`
+5. **Person Following**: `person_following_controller` subscribes to detections and calculates approach velocity
+6. **Motion Commands**: Twist messages published to `/cmd_vel` for smooth person tracking
 
 **✅ Manual Annotation System:**
 - **Custom OpenCV Drawing**: Manual bounding boxes using cv2.rectangle() and cv2.putText()
 - **Color-Coded Confidence**: Green (≥70%), Yellow (≥50%), Red (<50%)
 - **Percentage Display**: Confidence scores shown as percentages (e.g., "person: 76%")
-- **Real-Time Performance**: Maintains MediaPipe LIVE_STREAM mode with detect_async()
-
-**Key Capabilities:**
-- Real-time object recognition with custom visual annotations
-- Color-coded confidence visualization for quick assessment
-- RGB888 camera pipeline optimized for performance
-- Integration with navigation costmap for obstacle avoidance
-- Manual bounding box rendering independent of MediaPipe output
 
 **Configuration:**
 ```yaml
@@ -262,28 +426,57 @@ object_detection_node:
 - **Confidence Threshold**: 0.5 (configurable)
 - **Performance**: Real-time processing @ 640x480 with BGR888 format
 
-**Supported Gestures:**
-- 👍 **Thumbs Up**: Start navigation
-- 👎 **Thumbs Down**: Stop navigation
-- ✋ **Open Palm**: Pause navigation
-- ✊ **Fist**: Emergency stop
-- ✌️ **Peace Sign**: Follow person mode
-- 👆 **Pointing**: Directional movement (up/left/right)
-- 👋 **Wave**: Return home
+#### Data Flow: Gesture Recognition → Navigation
+
+```mermaid
+flowchart LR
+    subgraph INPUT["📷 Input"]
+        CAM["Pi Camera"]
+        CAMROS["camera_ros"]
+    end
+
+    subgraph VISION["🔍 Vision Processing"]
+        TOPIC1["/camera/image_raw"]
+        GES["gesture_recognition_node<br/>(MediaPipe Hands)"]
+        TOPIC2["/vision/gestures<br/>(HandGesture)"]
+    end
+
+    subgraph CONTROL["🎮 Control"]
+        GNAV["gesture_navigation_bridge"]
+        TOPIC3["/cmd_vel"]
+        NAV2["navigate_to_pose<br/>(Nav2 Action)"]
+    end
+
+    subgraph OUTPUT["🤖 Output"]
+        ROBOT["iRobot Create 2"]
+    end
+
+    CAM --> CAMROS --> TOPIC1 --> GES --> TOPIC2 --> GNAV
+    GNAV --> TOPIC3 --> ROBOT
+    GNAV -.-> NAV2
+```
+
+**Data Flow Description:**
+1. **Camera Capture**: Pi Camera captures frames via `camera_ros` node
+2. **Image Publishing**: Raw images published to `/camera/image_raw` topic
+3. **Gesture Recognition**: `gesture_recognition_node` detects hand landmarks and classifies gestures
+4. **Gesture Results**: Recognized gestures published to `/vision/gestures` with confidence scores
+5. **Navigation Bridge**: `gesture_navigation_bridge` maps gestures to navigation commands
+6. **Motion Commands**: Direct velocity commands to `/cmd_vel` or goal-based navigation via Nav2
 
 ![Gesture Recognition Demo](media/demos/gesture_recognition_demo.gif)
 <!-- Complete hand landmarks visualization with 21 points and skeleton connections -->
 
-**✅ Hand Landmarks Visualization:**
-- **Complete Hand Skeleton**: 21 landmark points with connecting lines
-- **Real-time Tracking**: MediaPipe LIVE_STREAM mode with detect_async()
-- **Annotated Image Publishing**: Enabled by default (consistent with object detection)
-- **Custom Overlays**: Landmark indices display for debugging (configurable)
-
-**Navigation Integration:**
-```
-Hand Gesture → Gesture Recognition → Navigation Command → Robot Movement
-```
+**Supported Gestures:**
+| Gesture | Action | Description |
+|---------|--------|-------------|
+| 👍 Thumbs Up | Start Navigation | Begin autonomous navigation |
+| 👎 Thumbs Down | Stop Navigation | Halt current movement |
+| ✋ Open Palm | Pause | Temporarily pause navigation |
+| ✊ Fist | Emergency Stop | Immediate full stop |
+| ✌️ Peace Sign | Follow Mode | Enable person following |
+| 👆 Pointing | Directional | Move in pointed direction |
+| 👋 Wave | Return Home | Navigate to home position |
 
 **Configuration:**
 ```yaml
@@ -292,30 +485,9 @@ gesture_recognition_node:
     confidence_threshold: 0.5
     max_hands: 2
     gesture_stability_threshold: 0.5  # seconds
-    publish_annotated_images: true    # Default enabled
-    show_landmark_indices: false     # Debug mode
-    camera_format: "BGR888"          # Optimized for gesture recognition
+    publish_annotated_images: true
+    camera_format: "BGR888"
 ```
-
-![Gesture Navigation Flow](media/gesture_navigation_flow.png)
-<!-- TODO: Create diagram showing gesture-to-navigation command mapping -->
-
-### Hand Landmark Detection
-
-**Features:**
-- **21 Landmark Points**: Complete hand skeleton tracking
-- **Dual Hand Support**: Track both hands simultaneously
-- **3D Coordinates**: X, Y, Z position data
-- **Confidence Scoring**: Per-landmark reliability metrics
-
-![Hand Landmarks Visualization](media/hand_landmarks_demo.gif)
-<!-- TODO: Record hand landmark detection with overlay visualization -->
-
-**Applications:**
-- Precise gesture analysis
-- Hand pose estimation
-- Fine motor control interfaces
-- Sign language recognition (future)
 
 ### Pose Detection
 
@@ -326,22 +498,51 @@ gesture_recognition_node:
 - **Real-time Performance**: 3-7 FPS @ 640x480 with RGB888 format
 - **Headless Operation**: No X11/UI dependencies required
 
+#### Data Flow: Pose Detection → Navigation
+
+```mermaid
+flowchart LR
+    subgraph INPUT["📷 Input"]
+        CAM["Pi Camera"]
+        CAMROS["camera_ros"]
+    end
+
+    subgraph VISION["🔍 Vision Processing"]
+        TOPIC1["/camera/image_raw"]
+        POSE["pose_detection_node<br/>(MediaPipe Pose)"]
+        TOPIC2["/vision/poses<br/>(PoseLandmarks)"]
+    end
+
+    subgraph CONTROL["🎮 Control"]
+        PNAV["pose_navigation_bridge"]
+        TOPIC3["/cmd_vel<br/>(Twist)"]
+    end
+
+    subgraph OUTPUT["🤖 Output"]
+        ROBOT["iRobot Create 2"]
+    end
+
+    CAM --> CAMROS --> TOPIC1 --> POSE --> TOPIC2 --> PNAV --> TOPIC3 --> ROBOT
+```
+
+**Data Flow Description:**
+1. **Camera Capture**: Pi Camera captures frames via `camera_ros` node
+2. **Image Publishing**: Raw images published to `/camera/image_raw` topic
+3. **Pose Detection**: `pose_detection_node` extracts 33 body landmarks per person
+4. **Pose Classification**: Landmarks analyzed to classify into one of 4 navigation poses
+5. **Navigation Bridge**: `pose_navigation_bridge` converts classified poses to motion commands
+6. **Motion Commands**: Twist messages published to `/cmd_vel` for robot control
+
 ![Pose Detection Demo](media/demos/pose_detection_demo.gif)
 <!-- Real-time pose detection with 33-point skeleton visualization -->
 
-**✅ Pose Landmarks Visualization:**
-- **Complete Body Skeleton**: 33 landmark points with connecting lines
-- **Real-time Tracking**: MediaPipe LIVE_STREAM mode with detect_async()
-- **Annotated Image Publishing**: Enabled by default for skeleton visualization
-- **Multi-person Detection**: Simultaneous tracking of multiple people
-
-**Key Capabilities:**
-- Real-time human pose estimation with full body skeleton
-- 33-point landmark detection (head, torso, arms, legs)
-- Multi-person pose tracking (up to 2 poses simultaneously)
-- **4-pose classification system** for direct robot control
-- Integration with navigation for human-aware robot behavior
-- Headless operation suitable for embedded robotics applications
+**4-Pose Navigation System:**
+| Pose | Action | Detection Criteria |
+|------|--------|-------------------|
+| 🙌 Arms Raised | Move Forward | Both wrists above shoulders |
+| 👈 Pointing Left | Turn Left | Left arm extended horizontally |
+| 👉 Pointing Right | Turn Right | Right arm extended horizontally |
+| 🧍 T-Pose | Stop | Both arms extended horizontally |
 
 **Configuration:**
 ```yaml
@@ -352,19 +553,8 @@ pose_detection_node:
     model_path: "models/pose_landmarker.task"
     camera_format: "RGB888"
     frame_rate: 5.0
-    publish_annotated_images: true    # Default enabled
+    publish_annotated_images: true
 ```
-
-### Face Detection
-
-**Features:**
-- **Face Bounding Boxes**: Precise face localization
-- **Confidence Scoring**: Detection reliability metrics
-- **Multi-face Support**: Detect multiple faces
-- **Age/Emotion Estimation**: Extended analysis capabilities
-
-![Face Detection Demo](media/face_detection_demo.gif)
-<!-- TODO: Record face detection with multiple people -->
 
 ---
 
@@ -388,7 +578,7 @@ The GestureBot vision system features a **unified image viewer architecture** th
 **Supported Topics:**
 - `/vision/objects/annotated` - Object detection with bounding boxes
 - `/vision/gestures/annotated` - Gesture recognition with hand landmarks
-- `/vision/pose/annotated` - Pose detection with 33-point skeleton visualization
+- `/vision/poses/annotated` - Pose detection with 33-point skeleton visualization
 - `/camera/image_raw` - Raw camera feed
 - Any ROS 2 Image topic
 
@@ -407,8 +597,8 @@ ros2 launch gesturebot image_viewer.launch.py \
 
 # Multi-modal vision: Objects, Gestures, and Pose Detection
 ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/pose/annotated"]' \
-    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/pose\/annotated": "Poses"}'
+    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/poses/annotated"]' \
+    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/poses\/annotated": "Poses"}'
 
 # Raw camera feed
 ros2 launch gesturebot image_viewer.launch.py \
@@ -478,7 +668,7 @@ ball_tracking_node:
 
 ---
 
-## 4. Navigation Integration
+## 5. Navigation Integration
 
 ![Navigation Integration Overview](media/navigation_integration.png)
 <!-- TODO: Create diagram showing vision-navigation integration -->
@@ -535,7 +725,7 @@ ros2 launch gesturebot pose_navigation_bridge.launch.py
 
 # Terminal 3: View pose detection with skeleton
 ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/pose/annotated"]'
+    image_topics:='["/vision/poses/annotated"]'
 ```
 
 **Configuration:**
@@ -629,13 +819,39 @@ person_following_controller:
 
 ---
 
-## 5. Performance & Optimization
+## 6. Performance & Optimization
+
+### Performance Specifications
+
+**✅ Validated Performance (Raspberry Pi 5):**
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **Object Detection** | 5 FPS @ 640x480 | Optimized for stability |
+| **Pose Detection** | 3-7 FPS @ 640x480 | Real-time 33-point landmarks |
+| **Gesture Recognition** | 10+ FPS @ 640x480 | Real-time hand tracking |
+| **Camera Pipeline** | RGB888 format | 20ms exposure time |
+| **Manual Annotations** | <5ms overhead | Additional processing |
+| **Detection Confidence** | 70-88% | Typical confidence levels |
+| **System Stability** | 100% uptime | Extended testing verified |
+
+**✅ Current Achievements:**
+- **Real-time Processing**: MediaPipe LIVE_STREAM mode with detect_async()
+- **Custom Visualization**: Manual OpenCV annotations with color coding
+- **Optimized Configuration**: 5 FPS target with 20ms exposure (10x faster than original)
+- **Multi-object Detection**: Simultaneous detection of person, keyboard, tv, etc.
+- **4-Pose Navigation**: Real-time pose classification with direct robot control
+- **Person Following**: Autonomous person tracking with smooth motion control
+- **Multi-Modal Control**: Gesture, pose, and person following navigation options
+
+![Performance Benchmarks](media/benchmarks/performance_charts.png)
+<!-- Performance benchmark charts showing 5 FPS stable operation with manual annotations -->
 
 ### Resource Management
 
 **Adaptive Processing System:**
 - **CPU < 60%**: All features enabled
-- **CPU 60-75%**: Disable low priority features  
+- **CPU 60-75%**: Disable low priority features
 - **CPU 75-90%**: Only high priority features
 - **CPU > 90%**: Critical features only
 
@@ -645,7 +861,7 @@ person_following_controller:
 **Priority Levels:**
 - **Priority 0 (Critical)**: Object detection, safety systems
 - **Priority 1 (High)**: Gesture recognition, navigation
-- **Priority 2 (Medium)**: Hand/pose landmarks, face detection
+- **Priority 2 (Medium)**: Hand/pose landmarks
 - **Priority 3 (Low)**: Analysis features, classification
 
 ### Adaptive Processing
@@ -672,7 +888,7 @@ elif cpu_usage > 60:
 
 ---
 
-## 6. Installation & Setup
+## 7. Installation & Setup
 
 > **📖 Complete Setup Guide**: For full project setup instructions, see the [main project README](../../../README.md)
 
@@ -805,7 +1021,7 @@ source install/setup.bash
 
 ---
 
-## 7. Configuration & Usage
+## 8. Configuration & Usage
 
 ### Environment Activation (Required)
 
@@ -867,7 +1083,7 @@ ros2 launch gesturebot image_viewer.launch.py \
 
 # View pose detection output
 ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/pose/annotated"]' \
+    image_topics:='["/vision/poses/annotated"]' \
     display_fps:=10.0
 ```
 
@@ -900,7 +1116,7 @@ ros2 launch gesturebot pose_navigation_bridge.launch.py
 
 # Terminal 3: View pose detection with skeleton
 ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/pose/annotated"]' \
+    image_topics:='["/vision/poses/annotated"]' \
     window_name:="GestureBot Poses"
 ```
 
@@ -925,8 +1141,8 @@ ros2 launch gesturebot image_viewer.launch.py \
 ```bash
 # View multiple vision systems simultaneously (if multiple systems running)
 ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/pose/annotated"]' \
-    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/pose\/annotated": "Poses"}'
+    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/poses/annotated"]' \
+    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/poses\/annotated": "Poses"}'
 ```
 
 ### Parameter Tuning
@@ -967,7 +1183,7 @@ ros2 topic echo /vision/objects
 ros2 topic echo /vision/gestures
 ros2 topic echo /vision/hand_landmarks
 ros2 topic echo /vision/poses          # NEW: Pose detection with classification
-ros2 topic echo /vision/pose/landmarks
+ros2 topic echo /vision/poses/landmarks
 
 # Performance monitoring
 ros2 topic echo /vision/*/performance
@@ -983,7 +1199,7 @@ ros2 service call /follow_mode/activate std_srvs/srv/SetBool "data: false"
 
 ---
 
-## 8. Development & Testing
+## 9. Development & Testing
 
 ### Adding New Features
 
