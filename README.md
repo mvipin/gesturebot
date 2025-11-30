@@ -1214,18 +1214,21 @@ ros2 launch gesturebot object_detection.launch.py
 ## API Documentation
 
 **Core Classes:**
-- `MediaPipeBaseNode`: Base class for all vision nodes
+- `MediaPipeBaseNode`: Base class for all vision nodes (in `vision_core`)
 - `MessageConverter`: Utility for ROS 2 message conversion
-- `PerformanceMonitor`: System performance tracking
 
-**Message Types:**
-- `DetectedObjects`: Object detection results
-- `HandGesture`: Gesture recognition output
-- `VisionPerformance`: Performance metrics
+**Message Types (from ros2_mediapipe package):**
+- `DetectedObject` / `DetectedObjects`: Object detection results with bounding boxes
+- `HandGesture`: Gesture recognition output with gesture name and confidence
+- `PoseLandmarks`: 33-point pose landmarks with pose action classification
 
-**Services:**
-- `EnableFeature`: Enable/disable vision features
-- `ConfigureFeature`: Runtime parameter configuration
+**Navigation Bridge Nodes:**
+- `gesture_navigation_bridge`: Converts hand gestures to velocity commands
+- `pose_navigation_bridge`: Converts body poses to velocity commands (4-pose system)
+- `person_following_controller`: Autonomous person following with object detection
+
+**Standard ROS 2 Services Used:**
+- `std_srvs/srv/SetBool`: Activate/deactivate person following mode
 
 ---
 

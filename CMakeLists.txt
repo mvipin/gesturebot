@@ -19,26 +19,10 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
-find_package(action_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
 
-# Generate interfaces
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/DetectedObject.msg"
-  "msg/DetectedObjects.msg"
-  "msg/HandGesture.msg"
-  "msg/HandLandmarks.msg"
-  "msg/PoseLandmarks.msg"
-  "msg/FaceDetection.msg"
-  "msg/VisionPerformance.msg"
-  "msg/GestureCommand.msg"
-  "srv/EnableFeature.srv"
-  "srv/ConfigureFeature.srv"
-  "action/TrackObject.action"
-  DEPENDENCIES std_msgs sensor_msgs geometry_msgs nav2_msgs action_msgs
-)
+# Messages now provided by ros2_mediapipe package
 
 # Include directories
 include_directories(include)
@@ -86,7 +70,6 @@ install(DIRECTORY
 )
 
 # Export dependencies
-ament_export_dependencies(rosidl_default_runtime)
 ament_export_include_directories(include)
 
 # Testing

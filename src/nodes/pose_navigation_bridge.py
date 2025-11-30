@@ -15,7 +15,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool
-from gesturebot.msg import PoseLandmarks
+from ros2_mediapipe.msg import PoseLandmarks
 
 
 class NavigationState(Enum):
@@ -85,7 +85,7 @@ class PoseNavigationBridge(Node):
         # Subscribers
         self.pose_subscription = self.create_subscription(
             PoseLandmarks,
-            '/vision/poses',
+            '/vision/pose',  # ros2_mediapipe uses singular 'pose'
             self.pose_callback,
             self.reliable_qos
         )
@@ -338,50 +338,6 @@ def main(args=None):
     try:
         bridge = PoseNavigationBridge()
         rclpy.spin(bridge)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        if rclpy.ok():
-            rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
-
-    def apply_acceleration_limit(self, current_vel: float, target_vel: float, max_accel: float, dt: float) -> float:
-        """
-        Apply acceleration limiting to prevent abrupt velocity changes.
-        Same implementation as gesture navigation bridge.
-        """
-        velocity_diff = target_vel - current_vel
-        max_change = max_accel * dt
-
-        if abs(velocity_diff) <= max_change:
-            return target_vel  # Can reach target this step
-        else:
-            # Limit the change to maximum allowed acceleration
-            return current_vel + (max_change if velocity_diff > 0 else -max_change)
-
-    def log_velocity_change(self, twist: Twist) -> None:
-        """Log velocity changes for debugging (smart logging to reduce noise)."""
-        # Only log if velocity is non-zero or has changed significantly
-        linear_vel = twist.linear.x
-        angular_vel = twist.angular.z
-
-        if abs(linear_vel) > 0.01 or abs(angular_vel) > 0.01:
-            self.get_logger().debug(
-                f'Pose motion: linear={linear_vel:.2f} m/s, angular={angular_vel:.2f} rad/s, '
-                f'state={self.nav_state.value}, following={self.following_active}'
-            )
-
-
-def main(args=None):
-    """Main function for pose navigation bridge."""
-    rclpy.init(args=args)
-
-    try:
-        node = PoseNavigationBridge()
-        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:

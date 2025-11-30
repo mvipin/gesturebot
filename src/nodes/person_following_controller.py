@@ -16,7 +16,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool
-from gesturebot.msg import DetectedObjects, DetectedObject
+from ros2_mediapipe.msg import DetectedObjects, DetectedObject
 
 
 class FollowingStatus(Enum):
