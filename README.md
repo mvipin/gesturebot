@@ -28,6 +28,79 @@ Control your robot through intuitive hand gestures and body poses!
 </tr>
 </table>
 
+## 📋 Table of Contents
+
+- [🚀 Quick Start](#quick-start)
+
+- **[1. Vision System Architecture](#1-vision-system-architecture)**
+  - [Hardware Components](#hardware-components)
+    - [Component Details](#component-details)
+    - [CAD Design](#cad-design)
+    - [Assembled Hardware](#assembled-hardware)
+  - [Software Architecture](#software-architecture)
+    - [Software Layer Description](#software-layer-description)
+    - [Core ROS 2 Packages](#core-ros-2-packages)
+    - [Unified Image Viewer System](#unified-image-viewer-system)
+
+- **[2. GeastureBot Features](#2-gesturebot-features)**
+  - [Object Detection](#object-detection)
+  - [Gesture Recognition](#gesture-recognition)
+  - [Pose Detection](#pose-detection)
+
+- **[3. Evaluation](#3-evaluation)**
+  - [Accuracy Metrics](#accuracy-metrics)
+  - [Performance Benchmarks](#performance-benchmarks)
+  - [Resource Utilization](#resource-utilization)
+
+- **[4. OpenCV Integration](#4-opencv-integration)**
+  - [Ball Tracking](#ball-tracking)
+  - [Blob Detection](#blob-detection)
+  - [Color-based Tracking](#color-based-tracking)
+
+- **[5. Navigation Integration](#5-navigation-integration)**
+  - [Gesture-based Robot Control](#gesture-based-robot-control)
+  - [4-Pose Navigation System](#4-pose-navigation-system)
+  - [Standalone Person Following](#standalone-person-following)
+  - [Safety Systems](#safety-systems)
+  - [Emergency Stop Features](#emergency-stop-features)
+
+- **[6. Performance & Optimization](#6-performance--optimization)**
+  - [Performance Specifications](#performance-specifications)
+  - [Resource Management](#resource-management)
+  - [Adaptive Processing](#adaptive-processing)
+  - [Benchmarking Tools](#benchmarking-tools)
+
+- **[7. Installation & Setup](#7-installation--setup)**
+  - [Prerequisites](#prerequisites)
+  - [Package-Specific Setup](#package-specific-setup)
+  - [Dependencies](#dependencies)
+  - [Camera_ros Build Instructions](#camera_ros-build-instructions)
+
+- **[8. Configuration & Usage](#8-configuration--usage)**
+  - [Launch Files](#launch-files)
+  - [Parameter Tuning](#parameter-tuning)
+  - [Topic Monitoring](#topic-monitoring)
+
+- **[9. Development & Testing](#9-development--testing)**
+  - [Adding New Features](#adding-new-features)
+  - [Testing Framework](#testing-framework)
+  - [Performance Benchmarking](#performance-benchmarking)
+
+- **[10. Troubleshooting](#10-troubleshooting)**
+  - [Common Issues](#common-issues)
+  - [Performance Problems](#performance-problems)
+  - [Hardware Debugging](#hardware-debugging)
+  - [Build Dependencies](#build-dependencies)
+  - [Parameter Type Issues](#parameter-type-issues)
+
+- **Additional Resources**
+  - [API Documentation](#api-documentation)
+  - [Contributing](#contributing)
+  - [License](#license)
+
+---
+
+<a id="quick-start"></a>
 ## 🚀 Quick Start
 
 ### For Existing Setup
@@ -93,83 +166,7 @@ python3 -c "import rclpy, mediapipe; print('✅ gesturebot package ready!')"
 ![Quick Start Demo](media/quick_start_demo.gif)
 <!-- TODO: Record GIF showing complete setup and launch process -->
 
-## 📋 Table of Contents
-
-- [🚀 Quick Start](#-quick-start)
-
-- **[1. Vision System Overview](#1-vision-system-overview)**
-  - [Modular Architecture](#️-modular-architecture)
-  - [Hardware Components](#hardware-components)
-    - [Hardware Architecture Diagram](#hardware-architecture-diagram)
-    - [Component Details](#component-details)
-    - [CAD Design](#cad-design)
-    - [Assembled Hardware](#assembled-hardware)
-  - [Software Architecture](#software-architecture)
-    - [Software Stack Diagram](#software-stack-diagram)
-    - [Software Layer Description](#software-layer-description)
-    - [Core ROS 2 Packages](#core-ros-2-packages)
-
-- **[2. MediaPipe Features](#2-mediapipe-features)**
-  - [Object Detection](#object-detection)
-  - [Gesture Recognition](#gesture-recognition)
-  - [Pose Detection](#pose-detection)
-
-- **[3. Unified Image Viewer System](#3-unified-image-viewer-system)**
-  - [Multi-topic Display](#multi-topic-display)
-  - [Custom Window Management](#custom-window-management)
-  - [Performance Optimizations](#performance-optimizations)
-
-- **[4. OpenCV Integration](#4-opencv-integration)**
-  - [Ball Tracking](#ball-tracking)
-  - [Blob Detection](#blob-detection)
-  - [Color-based Tracking](#color-based-tracking)
-
-- **[5. Navigation Integration](#5-navigation-integration)**
-  - [Gesture-based Robot Control](#gesture-based-robot-control)
-  - [4-Pose Navigation System](#4-pose-navigation-system)
-  - [Standalone Person Following](#standalone-person-following)
-  - [Safety Systems](#safety-systems)
-  - [Emergency Stop Features](#emergency-stop-features)
-
-- **[6. Performance & Optimization](#6-performance--optimization)**
-  - [Performance Specifications](#performance-specifications)
-  - [Resource Management](#resource-management)
-  - [Adaptive Processing](#adaptive-processing)
-  - [Benchmarking Tools](#benchmarking-tools)
-
-- **[7. Installation & Setup](#7-installation--setup)**
-  - [Prerequisites](#prerequisites)
-  - [Package-Specific Setup](#package-specific-setup)
-  - [Dependencies](#dependencies)
-  - [Camera_ros Build Instructions](#camera_ros-build-instructions)
-
-- **[8. Configuration & Usage](#8-configuration--usage)**
-  - [Launch Files](#launch-files)
-  - [Parameter Tuning](#parameter-tuning)
-  - [Topic Monitoring](#topic-monitoring)
-
-- **[9. Development & Testing](#9-development--testing)**
-  - [Adding New Features](#adding-new-features)
-  - [Testing Framework](#testing-framework)
-  - [Performance Benchmarking](#performance-benchmarking)
-
-- **[10. Troubleshooting](#10-troubleshooting)**
-  - [Common Issues](#common-issues)
-  - [Performance Problems](#performance-problems)
-  - [Hardware Debugging](#hardware-debugging)
-  - [Build Dependencies](#build-dependencies)
-  - [Parameter Type Issues](#parameter-type-issues)
-
-- **Additional Resources**
-  - [API Documentation](#api-documentation)
-  - [Contributing](#contributing)
-  - [License](#license)
-
----
-
-## 1. Vision System Overview
-
-### 🏗️ Modular Architecture
+## 1. Vision System Architecture
 
 The GestureBot vision system is built on a **modular architecture** designed for flexibility, reusability, and ease of development:
 
@@ -346,9 +343,67 @@ flowchart TB
 | `create_driver` | iRobot Create 2 driver (from `create_robot` meta-package, uses `libcreate`) |
 | `cv_bridge` | OpenCV-ROS 2 image conversion utility |
 
+#### Unified Image Viewer System
+
+**✅ Implementation Status: COMPLETE**
+
+The GestureBot vision system features a **unified image viewer architecture** that replaces the previous separate image viewer nodes with a single, efficient multi-topic display system.
+
+![Unified Image Viewer Demo](media/demos/unified_image_viewer_demo.gif)
+<!-- Multi-window display showing object detection and gesture recognition simultaneously -->
+
+**Key Features:**
+- **Single Node Architecture**: One `UnifiedImageViewerNode` replaces multiple separate viewers
+- **Simultaneous Display**: View multiple vision streams in separate windows
+- **Resource Efficient**: Reduced memory footprint and CPU usage compared to multiple viewer processes
+- **Per-topic FPS Tracking**: Individual performance monitoring for each displayed topic
+
+**Supported Topics:**
+- `/vision/objects/annotated` - Object detection with bounding boxes
+- `/vision/gestures/annotated` - Gesture recognition with hand landmarks
+- `/vision/poses/annotated` - Pose detection with 33-point skeleton visualization
+- `/camera/image_raw` - Raw camera feed
+- Any ROS 2 Image topic
+
+**Window Configuration:**
+```bash
+# Single topic display
+ros2 launch gesturebot image_viewer.launch.py \
+    image_topics:='["/vision/objects/annotated"]'
+
+# Multiple topics with custom window names
+ros2 launch gesturebot image_viewer.launch.py \
+    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated"]' \
+    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures"}'
+
+# Multi-modal vision: Objects, Gestures, and Pose Detection
+ros2 launch gesturebot image_viewer.launch.py \
+    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/poses/annotated"]' \
+    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/poses\/annotated": "Poses"}'
+```
+
+**Display Features:**
+- **Custom Window Titles**: Configurable per-topic window names
+- **FPS Overlay**: Shows display FPS and topic name for each window
+- **Screenshot Support**: Press 's' to save (filename includes topic identifier)
+- **Keyboard Controls**: 'q' or ESC to quit, 's' to screenshot all windows
+
+**Raspberry Pi 5 Optimizations:**
+- **Frame Rate Limiting**: Configurable display throttling (default: 10 FPS)
+- **Efficient Image Conversion**: Handles both RGB8 and BGR8 formats automatically
+- **Memory Management**: Proper OpenCV window cleanup and resource management
+- **QoS Compatibility**: BEST_EFFORT reliability matches vision system publishers
+
+**Resource Usage:**
+- **Memory**: ~15MB per active window (vs ~25MB for separate viewers)
+- **CPU**: <5% total at 10 FPS display rate for multiple topics
+- **Latency**: <50ms from message receipt to display
+
 ---
 
-## 2. MediaPipe Features
+## 2. GestureBot Features
+
+The GestureBot vision system leverages three core MediaPipe capabilities, each with a dedicated data flow from camera input to robot control output.
 
 The GestureBot vision system leverages three core MediaPipe capabilities, each with a dedicated data flow from camera input to robot control output.
 
@@ -558,72 +613,213 @@ pose_detection_node:
 
 ---
 
-## 3. Unified Image Viewer System
+## 3. Evaluation
 
-**✅ Implementation Status: COMPLETE**
+This section describes how model performance is measured for each detection type. The evaluation methodology differs based on the task: object detection uses spatial matching (IoU), gesture recognition uses classification accuracy, and pose detection uses keypoint similarity metrics.
 
-The GestureBot vision system features a **unified image viewer architecture** that replaces the previous separate image viewer nodes with a single, efficient multi-topic display system.
+### Accuracy Metrics
 
-![Unified Image Viewer Demo](media/demos/unified_image_viewer_demo.gif)
-<!-- Multi-window display showing object detection and gesture recognition simultaneously -->
+#### Object Detection: mAP (Mean Average Precision)
 
-### Multi-topic Display
+Object detection accuracy is evaluated using **COCO-style mAP** (mean Average Precision), the standard metric for bounding box detection tasks.
 
-**Key Features:**
-- **Single Node Architecture**: One `UnifiedImageViewerNode` replaces multiple separate viewers
-- **Simultaneous Display**: View multiple vision streams in separate windows
-- **Resource Efficient**: Reduced memory footprint and CPU usage compared to multiple viewer processes
-- **Per-topic FPS Tracking**: Individual performance monitoring for each displayed topic
+**Evaluation Process:**
+1. **Run Inference**: Process all test images and collect predictions (bounding boxes, class labels, confidence scores)
+2. **Match Predictions to Ground Truth (per class, per image)**: For each image and each class, compute IoU between all predictions and all ground truth boxes of that class
+3. **Determine True Positives**: A prediction is TP if IoU ≥ threshold with an unmatched ground truth box; each GT box can only be matched once (highest IoU prediction wins)
+4. **Build Global Precision-Recall Curve**: For each class, pool all predictions across all images, sort by confidence (descending), then compute cumulative TP/FP counts to get precision and recall at each rank
+5. **Compute AP per Class**: Interpolate precision at 101 recall thresholds (0.00, 0.01, ..., 1.00); AP = mean of these 101 precision values
+6. **Average Across Classes**: mAP = mean of AP values for all classes with ground truth instances
 
-**Supported Topics:**
-- `/vision/objects/annotated` - Object detection with bounding boxes
-- `/vision/gestures/annotated` - Gesture recognition with hand landmarks
-- `/vision/poses/annotated` - Pose detection with 33-point skeleton visualization
-- `/camera/image_raw` - Raw camera feed
-- Any ROS 2 Image topic
+**Key Metrics:**
+| Metric | IoU Threshold | Description |
+|--------|---------------|-------------|
+| mAP@0.50 | 0.50 | PASCAL VOC standard, lenient matching |
+| mAP@0.50:0.95 | 0.50 to 0.95 (step 0.05) | COCO primary metric, averaged over 10 thresholds |
+| mAP@0.75 | 0.75 | Strict localization requirement |
+| Recall@100 | 0.50:0.95 | Max recall with up to 100 detections per image |
 
-### Custom Window Management
+**Benchmark Results (EfficientDet Lite on Pi 5):**
+| Metric | Value |
+|--------|-------|
+| mAP@0.50 | 0.416 |
+| mAP@0.50:0.95 | 0.314 |
+| mAP@0.75 | 0.349 |
+| Recall@100 | 0.326 |
+| Test Images | 50 (COCO val2017 subset) |
 
-**Window Configuration:**
-```bash
-# Single topic display
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated"]'
+**Precision-Recall Curve (Person Class):**
 
-# Multiple topics with custom window names
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated"]' \
-    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures"}'
+![P-R Curve Combined](media/evaluation/pr_curve_person_combined.png)
 
-# Multi-modal vision: Objects, Gestures, and Pose Detection
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/poses/annotated"]' \
-    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/poses\/annotated": "Poses"}'
+<details>
+<summary><strong>Per-Class Precision Tables (click to expand)</strong></summary>
 
-# Raw camera feed
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/camera/image_raw"]' \
-    topic_window_names:='{"\/camera\/image_raw": "Raw Camera"}'
+**Per-Class Precision at Recall Thresholds (mAP@0.50)** (Top 10 categories)
+
+| Class | R=0.0 | R=0.1 | R=0.2 | R=0.3 | R=0.4 | R=0.5 | R=0.6 | R=0.7 | R=0.8 | R=0.9 | R=1.0 | AP |
+|------|------|------|------|------|------|------|------|------|------|------|------|------|
+| person (127) | 1.000 | 1.000 | 1.000 | 0.875 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.360 |
+| car (34) | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.947 | 0.000 | 0.000 | 0.000 | 0.000 | 0.622 |
+| book (24) | 0.750 | 0.750 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.104 |
+| boat (15) | 1.000 | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.139 |
+| sheep (13) | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+| toilet (13) | 1.000 | 1.000 | 0.600 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.206 |
+| bird (11) | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.634 |
+| elephant (11) | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.505 |
+| motorcycle (10) | 1.000 | 1.000 | 1.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.277 |
+| orange (10) | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+
+
+**Per-Class Precision at Recall Thresholds (mAP@0.50:0.95)** (Top 10 categories)
+
+| Class | R=0.0 | R=0.1 | R=0.2 | R=0.3 | R=0.4 | R=0.5 | R=0.6 | R=0.7 | R=0.8 | R=0.9 | R=1.0 | AP |
+|------|------|------|------|------|------|------|------|------|------|------|------|------|
+| person (127) | 0.820 | 0.676 | 0.503 | 0.314 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.185 |
+| car (34) | 1.000 | 0.923 | 0.771 | 0.648 | 0.575 | 0.488 | 0.379 | 0.000 | 0.000 | 0.000 | 0.000 | 0.417 |
+| book (24) | 0.450 | 0.300 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.049 |
+| boat (15) | 0.850 | 0.800 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.114 |
+| sheep (13) | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+| toilet (13) | 0.900 | 0.500 | 0.180 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.125 |
+| bird (11) | 0.840 | 0.757 | 0.717 | 0.657 | 0.657 | 0.657 | 0.400 | 0.000 | 0.000 | 0.000 | 0.000 | 0.426 |
+| elephant (11) | 1.000 | 0.800 | 0.800 | 0.760 | 0.600 | 0.400 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.367 |
+| motorcycle (10) | 0.600 | 0.500 | 0.300 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.131 |
+| orange (10) | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 |
+
+</details>
+
+<details>
+<summary><strong>AP Calculation Example: Person Class (mAP@0.50)</strong></summary>
+
+This table shows how Average Precision is calculated by ranking all person detections by confidence, then computing cumulative precision and recall at each rank.
+
+**Ground Truth: 127 person instances | IoU threshold: 0.50**
+
+| Rank | Image ID | Conf  | TP/FP | Cum TP | Cum FP | Precision | Recall |
+|------|----------|-------|-------|--------|--------|-----------|--------|
+| 1 | 85329 | 0.929 | TP | 1 | 0 | 1.000 | 0.008 |
+| 2 | 456496 | 0.878 | TP | 2 | 0 | 1.000 | 0.016 |
+| 3 | 308394 | 0.836 | TP | 3 | 0 | 1.000 | 0.024 |
+| 4 | 386912 | 0.774 | TP | 4 | 0 | 1.000 | 0.031 |
+| 5 | 233771 | 0.768 | TP | 5 | 0 | 1.000 | 0.039 |
+| 6 | 463730 | 0.768 | TP | 6 | 0 | 1.000 | 0.047 |
+| 7 | 87038 | 0.750 | TP | 7 | 0 | 1.000 | 0.055 |
+| 8 | 296649 | 0.749 | TP | 8 | 0 | 1.000 | 0.063 |
+| 9 | 252219 | 0.730 | TP | 9 | 0 | 1.000 | 0.071 |
+| 10 | 252219 | 0.727 | TP | 10 | 0 | 1.000 | 0.079 |
+| 11 | 329323 | 0.710 | TP | 11 | 0 | 1.000 | 0.087 |
+| 12 | 329323 | 0.707 | **FP** | 11 | 1 | 0.917 | 0.087 |
+| 13 | 87038 | 0.703 | TP | 12 | 1 | 0.923 | 0.094 |
+| 14 | 296649 | 0.690 | TP | 13 | 1 | 0.929 | 0.102 |
+| 15 | 296649 | 0.687 | TP | 14 | 1 | 0.933 | 0.110 |
+| ... | ... | ... | ... | ... | ... | ... | ... |
+| 52 | 174482 | 0.319 | FP | 44 | 8 | 0.846 | 0.346 |
+| 53 | 491497 | 0.312 | FP | 44 | 9 | 0.830 | 0.346 |
+| 54 | 239274 | 0.306 | FP | 44 | 10 | 0.815 | 0.346 |
+| 55 | 87038 | 0.303 | FP | 44 | 11 | 0.800 | 0.346 |
+| 56 | 239274 | 0.300 | FP | 44 | 12 | 0.786 | 0.346 |
+
+**Summary:**
+- Total detections: 56 (44 TP + 12 FP)
+- Max Recall achieved: 44/127 = 0.346 (34.6%)
+- AP@0.50 = Area under interpolated P-R curve ≈ 0.360
+
+**How AP is calculated:**
+1. Sort all detections by confidence (descending)
+2. Match each detection to ground truth (IoU ≥ 0.50 → TP, otherwise FP)
+3. Compute cumulative precision and recall at each rank
+4. AP = mean of interpolated precision at 101 recall thresholds (0.00, 0.01, ..., 1.00)
+
+</details>
+
+
+#### Gesture Recognition: Classification Accuracy
+
+Gesture recognition is a **per-frame classification task** where the model predicts a gesture class for each detected hand. Unlike object detection, there is no spatial localization to evaluate—only whether the predicted gesture matches the ground truth.
+
+**Primary Metrics:**
+| Metric | Description |
+|--------|-------------|
+| Top-1 Accuracy | Percentage of frames where predicted gesture = ground truth |
+| Confusion Matrix | Per-class prediction breakdown showing common misclassifications |
+| F1-Score | Harmonic mean of precision and recall per gesture class |
+
+**Why mAP Doesn't Apply:**
+- No bounding boxes to match (hand detection is separate from gesture classification)
+- Single-label classification per hand, not multi-object detection
+- No IoU-based matching required
+
+**Supported Gestures:**
+- `thumbs_up`, `thumbs_down`, `peace_sign`, `pointing_up`, `open_palm`, `closed_fist`, `victory`
+
+#### Pose Detection: OKS-based AP
+
+Pose detection accuracy uses **Object Keypoint Similarity (OKS)** instead of IoU for matching predictions to ground truth. OKS measures how close predicted keypoints are to ground truth keypoints, normalized by the person's scale.
+
+**OKS Formula:**
 ```
+OKS = Σ exp(-d²ᵢ / 2s²κ²ᵢ) × δ(vᵢ > 0) / Σ δ(vᵢ > 0)
+```
+Where:
+- `dᵢ` = Euclidean distance between predicted and ground truth keypoint i
+- `s` = Object scale (square root of person bounding box area)
+- `κᵢ` = Per-keypoint constant controlling falloff (larger for harder keypoints like wrists)
+- `vᵢ` = Visibility flag for keypoint i
 
-**Display Features:**
-- **Custom Window Titles**: Configurable per-topic window names
-- **FPS Overlay**: Shows display FPS and topic name for each window
-- **Screenshot Support**: Press 's' to save (filename includes topic identifier)
-- **Keyboard Controls**: 'q' or ESC to quit, 's' to screenshot all windows
+**Alternative Metric - PCK (Percentage of Correct Keypoints):**
+| Metric | Description |
+|--------|-------------|
+| PCK@0.5 | Keypoint correct if distance < 0.5 × head size |
+| PCK@0.2 | Stricter threshold for precise localization |
 
-### Performance Optimizations
+**MediaPipe Pose Keypoints:** 33 landmarks including face, hands, and body joints.
 
-**Raspberry Pi 5 Optimizations:**
-- **Frame Rate Limiting**: Configurable display throttling (default: 10 FPS)
-- **Efficient Image Conversion**: Handles both RGB8 and BGR8 formats automatically
-- **Memory Management**: Proper OpenCV window cleanup and resource management
-- **QoS Compatibility**: BEST_EFFORT reliability matches vision system publishers
+### Performance Benchmarks
 
-**Resource Usage:**
-- **Memory**: ~15MB per active window (vs ~25MB for separate viewers)
-- **CPU**: <5% total at 10 FPS display rate for multiple topics
-- **Latency**: <50ms from message receipt to display
+Performance metrics measure how fast the system processes frames, independent of accuracy.
+
+#### Inference Latency
+
+| Detection Type | Model | Avg Latency (ms) | FPS | Hardware |
+|----------------|-------|------------------|-----|----------|
+| Object Detection | EfficientDet Lite | 100.9 | ~10 | Pi 5, 8GB |
+| Gesture Recognition | MediaPipe Hands | TBD | TBD | Pi 5, 8GB |
+| Pose Detection | MediaPipe Pose | TBD | TBD | Pi 5, 8GB |
+
+**Measurement Methodology:**
+- Latency measured as pure inference time (excludes image loading, preprocessing, postprocessing)
+- FPS = 1000 / latency_ms
+- Tested on static images to isolate model performance from camera pipeline
+
+#### End-to-End Pipeline Latency
+
+| Pipeline Stage | Typical Latency |
+|----------------|-----------------|
+| Camera Capture | 20ms (50 FPS) |
+| Image Conversion (cv_bridge) | <5ms |
+| Model Inference | 100-200ms |
+| Result Publishing | <1ms |
+| **Total Pipeline** | **125-225ms** |
+
+### Resource Utilization
+
+Resource metrics measure computational cost during sustained operation.
+
+| Resource | Object Detection | Gesture Recognition | Pose Detection |
+|----------|------------------|---------------------|----------------|
+| CPU Usage | ~40-60% | TBD | TBD |
+| Memory (RSS) | ~350MB | TBD | TBD |
+| GPU/NPU | N/A (CPU only) | N/A | N/A |
+
+**Thermal Considerations:**
+- Pi 5 throttles at 85°C
+- Active cooling recommended for sustained vision processing
+- Passive cooling sufficient for <5 FPS operation
+
+**Power Consumption:**
+- Idle: ~3W
+- Vision processing: ~7-10W
+- Peak (all features active): ~12W
 
 ---
 
