@@ -1,20 +1,12 @@
 #!/usr/bin/env python3
 """
 Gesture Recognition Launch File for GestureBot
-Launches the gesture detection system (camera + gesture recognition).
-
-This modular launch file provides:
-- Camera node for image capture
-- Gesture recognition node for MediaPipe-based hand gesture detection
-- Publishes gesture results to /vision/gestures topic
-
-For robot motion control, launch the separate navigation bridge:
-    ros2 launch gesturebot gesture_navigation_bridge.launch.py
+Launches camera + ros2_mediapipe gesture recognition with configurable parameters.
 
 Usage:
     ros2 launch gesturebot gesture_recognition.launch.py
 
-For complete gesture-controlled robot motion:
+For gesture-controlled robot motion:
     # Terminal 1: Gesture detection
     ros2 launch gesturebot gesture_recognition.launch.py
 
@@ -36,7 +28,7 @@ def generate_launch_description():
     # LAUNCH ARGUMENTS
     # ========================================
 
-    # Camera configuration (matching object detection patterns)
+    # Camera configuration
     declare_enable_camera = DeclareLaunchArgument(
         'enable_camera',
         default_value='true',
@@ -80,8 +72,6 @@ def generate_launch_description():
         description='Enable gesture recognition node'
     )
 
-
-
     declare_confidence_threshold = DeclareLaunchArgument(
         'confidence_threshold',
         default_value='0.5',
@@ -94,59 +84,28 @@ def generate_launch_description():
         description='Maximum number of hands to detect'
     )
 
-    declare_gesture_stability_threshold = DeclareLaunchArgument(
-        'gesture_stability_threshold',
-        default_value='0.1',
-        description='Minimum duration (seconds) for gesture stability (maximum responsiveness)'
+    declare_frame_skip = DeclareLaunchArgument(
+        'frame_skip',
+        default_value='1',
+        description='Process every Nth frame (1 = process all frames)'
     )
 
-    declare_publish_annotated_images = DeclareLaunchArgument(
-        'publish_annotated_images',
-        default_value='true',
-        description='Enable publishing of annotated images with gesture overlays'
-    )
-
-    declare_show_landmark_indices = DeclareLaunchArgument(
-        'show_landmark_indices',
-        default_value='false',
-        description='Show landmark indices on each landmark point for debugging'
-    )
-
-    # Debug configuration (matching object detection patterns)
+    # Debug configuration
     declare_debug_mode = DeclareLaunchArgument(
         'debug_mode',
         default_value='false',
         description='Enable debug output and logging'
     )
 
-    # Buffered logging configuration (matching object detection patterns)
-    declare_unlimited_buffer_mode = DeclareLaunchArgument(
-        'unlimited_buffer_mode',
-        default_value='false',
-        description='Enable unlimited buffer mode (timer-only flushing for comprehensive diagnostics). When false, uses circular buffer mode (auto-drop when full).'
-    )
-
-    declare_buffer_logging_enabled = DeclareLaunchArgument(
-        'buffer_logging_enabled',
-        default_value='false',
-        description='Enable buffered logging system. When false, disables all buffering and only logs critical errors directly.'
-    )
-
-    declare_enable_performance_tracking = DeclareLaunchArgument(
-        'enable_performance_tracking',
-        default_value='false',
-        description='Enable performance tracking and publishing to /vision/performance topic. When true, publishes detailed pipeline timing metrics every 5 seconds.'
-    )
-
     # Model configuration
     declare_model_path = DeclareLaunchArgument(
         'model_path',
         default_value='models/gesture_recognizer.task',
-        description='Path to the gesture recognition model file. Can be absolute path or relative to package share directory.'
+        description='Path to the gesture recognition model file'
     )
-    
+
     # ========================================
-    # CAMERA NODE (High-Performance Configuration for Gesture Recognition)
+    # CAMERA NODE (High-Performance Configuration)
     # ========================================
 
     camera_node = Node(
@@ -158,22 +117,16 @@ def generate_launch_description():
             "width": LaunchConfiguration('camera_width'),
             "height": LaunchConfiguration('camera_height'),
             "format": LaunchConfiguration('camera_format'),
-            # High-performance parameters (adapted from object detection launch)
-            "buffer_queue_size": 2,  # Reduced buffer for lower latency
-            # Camera controls optimized for gesture recognition (15fps)
-            "FrameDurationLimits": [66667, 66667],  # 15 FPS = 66.67ms = 66,667 microseconds
-            "ExposureTime": 20000,  # 1/50s in microseconds
+            "buffer_queue_size": 2,
+            "FrameDurationLimits": [66667, 66667],  # 15 FPS
+            "ExposureTime": 20000,
             "AnalogueGain": 1.0,
             "DigitalGain": 1.0,
-            # Quality settings
-            "jpeg_quality": 80,  # Reduced for better performance
-            # Sensor mode for IMX219
+            "jpeg_quality": 80,
             "sensor_mode": "640:480",
-            # Use sim time setting
             'use_sim_time': False,
         }],
         remappings=[
-            # Ensure proper topic naming (using relative remapping like object detection)
             ('~/image_raw', '/camera/image_raw'),
             ('~/image_raw/compressed', '/camera/image_raw/compressed'),
             ('~/camera_info', '/camera/camera_info'),
@@ -181,45 +134,31 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('enable_camera')),
         output='screen'
     )
-    
+
     # ========================================
-    # GESTURE RECOGNITION NODE
+    # GESTURE RECOGNITION NODE (ros2_mediapipe)
     # ========================================
 
     gesture_recognition_node = Node(
-        package='gesturebot',
+        package='ros2_mediapipe',
         executable='gesture_recognition_node.py',
         name='gesture_recognition_node',
         parameters=[{
-            'enabled': True,
-            'max_fps': 15.0,
-            'frame_skip': 1,
+            'camera_topic': '/camera/image_raw',
             'confidence_threshold': LaunchConfiguration('confidence_threshold'),
             'max_hands': LaunchConfiguration('max_hands'),
-            'gesture_stability_threshold': LaunchConfiguration('gesture_stability_threshold'),
-            'priority': 1,
-            'publish_annotated_images': LaunchConfiguration('publish_annotated_images'),
-            'show_landmark_indices': LaunchConfiguration('show_landmark_indices'),
+            'frame_skip': LaunchConfiguration('frame_skip'),
             'debug_mode': LaunchConfiguration('debug_mode'),
-            'unlimited_buffer_mode': LaunchConfiguration('unlimited_buffer_mode'),
-            'buffer_logging_enabled': LaunchConfiguration('buffer_logging_enabled'),
-            'enable_performance_tracking': LaunchConfiguration('enable_performance_tracking'),
             'model_path': LaunchConfiguration('model_path'),
         }],
-        remappings=[
-            ('image_raw', '/camera/image_raw'),
-        ],
         condition=IfCondition(LaunchConfiguration('enable_gesture_recognition')),
         output='screen'
     )
-
-
 
     # ========================================
     # NODE GROUPING
     # ========================================
 
-    # Group all nodes for organized launch
     gesture_recognition_group = GroupAction([
         camera_node,
         gesture_recognition_node,
@@ -240,13 +179,8 @@ def generate_launch_description():
         declare_enable_gesture_recognition,
         declare_confidence_threshold,
         declare_max_hands,
-        declare_gesture_stability_threshold,
-        declare_publish_annotated_images,
-        declare_show_landmark_indices,
+        declare_frame_skip,
         declare_debug_mode,
-        declare_unlimited_buffer_mode,
-        declare_buffer_logging_enabled,
-        declare_enable_performance_tracking,
         declare_model_path,
 
         # Gesture recognition system nodes

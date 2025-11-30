@@ -36,7 +36,10 @@
   <!-- Action dependencies -->
   <depend>action_msgs</depend>
   <depend>rclcpp_action</depend>
-  
+
+  <!-- Vision processing (core MediaPipe nodes) -->
+  <depend>ros2_mediapipe</depend>
+
   <!-- Message generation -->
   <build_depend>rosidl_default_generators</build_depend>
   <exec_depend>rosidl_default_runtime</exec_depend>

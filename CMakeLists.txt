@@ -46,13 +46,10 @@ include_directories(include)
 # Install Python modules
 ament_python_install_package(vision_core PACKAGE_DIR src/vision_core)
 
-# Install Python executables
+# Install Python executables (vision nodes now provided by ros2_mediapipe)
 install(PROGRAMS
-  src/nodes/object_detection_node.py
-  src/nodes/gesture_recognition_node.py
   src/nodes/gesture_navigation_bridge.py
   src/nodes/image_viewer_node.py
-  src/nodes/pose_detection_node.py
   src/nodes/pose_navigation_bridge.py
   src/nodes/person_following_controller.py
   DESTINATION lib/${PROJECT_NAME}
