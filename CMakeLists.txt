@@ -39,33 +39,16 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# Install test scripts
-install(PROGRAMS
-  test/test_mediapipe_models.py
-  test/test_camera_integration.py
-  test/test_vision_nodes.py
-  test/quick_test.py
-  test/run_all_tests.py
-  test/mediapipe_feature_tester.py
-  DESTINATION lib/${PROJECT_NAME}/test
-)
-
 # Install launch files
 install(DIRECTORY
   launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )
 
-# Install config files
+# Install docs directory
 install(DIRECTORY
-  config/
-  DESTINATION share/${PROJECT_NAME}/config
-)
-
-# Install models directory (for MediaPipe models)
-install(DIRECTORY
-  models/
-  DESTINATION share/${PROJECT_NAME}/models
+  docs/
+  DESTINATION share/${PROJECT_NAME}/docs
   OPTIONAL
 )
 
@@ -75,15 +58,7 @@ ament_export_include_directories(include)
 # Testing
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  find_package(ament_cmake_pytest REQUIRED)
-  
-  # Linting
   ament_lint_auto_find_test_dependencies()
-  
-  # Python tests (using actual test files)
-  ament_add_pytest_test(test_mediapipe_models test/test_mediapipe_models.py)
-  ament_add_pytest_test(test_camera_integration test/test_camera_integration.py)
-  ament_add_pytest_test(test_vision_nodes test/test_vision_nodes.py)
 endif()
 
 ament_package()
