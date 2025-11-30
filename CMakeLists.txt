@@ -27,9 +27,6 @@ find_package(image_transport REQUIRED)
 # Include directories
 include_directories(include)
 
-# Install Python modules
-ament_python_install_package(vision_core PACKAGE_DIR src/vision_core)
-
 # Install Python executables (vision nodes now provided by ros2_mediapipe)
 install(PROGRAMS
   src/nodes/gesture_navigation_bridge.py
