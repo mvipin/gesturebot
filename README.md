@@ -12,15 +12,25 @@
 </td>
 <td valign="top">
 
-**Comprehensive MediaPipe-based computer vision system for robotics applications**, specifically designed for the GestureBot platform running on Raspberry Pi 5.
+**Comprehensive MediaPipe-based computer vision system for robotics applications**, specifically designed for the GestureBot platform running on Raspberry Pi 5 with ROS 2 Jazzy.
 
-**Key Features:**
-- 🎯 Real-time object detection
-- 🖐️ Gesture recognition with hand landmarks
-- 🏃 Pose detection with 33-point landmark tracking
-- 🧭 **4-pose navigation system**
-- 👤 **Standalone person following**
-- 🤖 Seamless ROS 2 Navigation stack integration
+The system provides three ML-powered vision pipelines that translate camera input into structured ROS 2 messages, enabling natural human-robot interaction without traditional input devices.
+
+**Vision Capabilities:**
+- 🎯 **Object Detection** — EfficientDet-Lite detecting 80 COCO classes at ~15 FPS
+- 🖐️ **Gesture Recognition** — 7 hand gestures with 21-point landmark tracking
+- 🏃 **Pose Detection** — 33-point body landmark tracking with real-time classification
+
+**Navigation Modes:**
+- 🧭 **4-Pose Navigation** — Control robot movement with body poses (arms raised, pointing, t-pose)
+- 👤 **Person Following** — Autonomous following with distance maintenance (0.8m–5.0m range)
+- ✋ **Gesture Control** — Direct velocity commands via hand gestures
+
+**Platform Features:**
+- 🔧 **iRobot Create 2** base with differential drive
+- 📷 **Raspberry Pi Camera Module 3** (IMX708, 640×480 @ 30 FPS)
+- ⚡ **25 Hz velocity smoothing** for stable motion control
+- 🛡️ **Multi-layer safety** — timeout protection, emergency stops, confidence thresholds
 
 Control your robot through intuitive hand gestures and body poses!
 
@@ -33,29 +43,43 @@ Control your robot through intuitive hand gestures and body poses!
 - [🚀 Quick Start](#quick-start)
 
 - **[1. Vision System Architecture](#1-vision-system-architecture)**
-  - [Hardware Components](#hardware-components)
+  - [Hardware Architecture](#hardware-architecture)
     - [Component Details](#component-details)
     - [CAD Design](#cad-design)
     - [Assembled Hardware](#assembled-hardware)
   - [Software Architecture](#software-architecture)
-    - [Software Layer Description](#software-layer-description)
-    - [Core ROS 2 Packages](#core-ros-2-packages)
-    - [Unified Image Viewer System](#unified-image-viewer-system)
+    - [Component Layout](#component-layout)
+    - [Class Structure](#class-structure)
+    - [ROS 2 Package Structure](#ros-2-package-structure)
+    - [Control Flow](#control-flow)
 
-- **[2. GeastureBot Features](#2-gesturebot-features)**
-  - [Object Detection](#object-detection)
-  - [Gesture Recognition](#gesture-recognition)
-  - [Pose Detection](#pose-detection)
+- **[2. Object Detection](#2-object-detection)**
+  - [Model Architecture](#model-architecture)
+  - [Model Variants & Quantization](#model-variants--quantization)
+  - [Model Performance](#model-performance)
+    - [Accuracy](#accuracy)
+    - [Precision-Recall Curve](#precision-recall-curve)
+  - [Configuration Reference](#configuration-reference)
+  - [Parameter Tuning and Optimization](#parameter-tuning-and-optimization)
+    - [Camera Frame Rate](#camera-frame-rate)
+    - [Camera Exposure Time](#camera-exposure-time)
+    - [Frame Skip](#frame-skip)
+    - [Confidence Threshold](#confidence-threshold)
+  - [System Performance - Latency/CPU/Memory](#system-performance---latencycpumemory)
 
-- **[3. Evaluation](#3-evaluation)**
-  - [Accuracy Metrics](#accuracy-metrics)
-  - [Performance Benchmarks](#performance-benchmarks)
-  - [Resource Utilization](#resource-utilization)
+- **[3. Gesture Recognition](#3-gesture-recognition)**
+  - [Model Architecture](#model-architecture-1)
+  - [Model Variants & Quantization](#model-variants--quantization-1)
+  - [Model Performance](#model-performance-1)
+  - [Configuration Reference](#configuration-reference-1)
+  - [System Performance - Latency/CPU/Memory](#system-performance---latencycpumemory-1)
 
-- **[4. OpenCV Integration](#4-opencv-integration)**
-  - [Ball Tracking](#ball-tracking)
-  - [Blob Detection](#blob-detection)
-  - [Color-based Tracking](#color-based-tracking)
+- **[4. Pose Detection](#4-pose-detection)**
+  - [Model Architecture](#model-architecture-2)
+  - [Model Variants & Quantization](#model-variants--quantization-2)
+  - [Model Performance](#model-performance-2)
+  - [Configuration Reference](#configuration-reference-2)
+  - [System Performance - Latency/CPU/Memory](#system-performance---latencycpumemory-2)
 
 - **[5. Navigation Integration](#5-navigation-integration)**
   - [Gesture-based Robot Control](#gesture-based-robot-control)
@@ -63,40 +87,21 @@ Control your robot through intuitive hand gestures and body poses!
   - [Standalone Person Following](#standalone-person-following)
   - [Safety Systems](#safety-systems)
   - [Emergency Stop Features](#emergency-stop-features)
+  - [Visual Servoing](#visual-servoing)
 
-- **[6. Performance & Optimization](#6-performance--optimization)**
-  - [Performance Specifications](#performance-specifications)
-  - [Resource Management](#resource-management)
-  - [Adaptive Processing](#adaptive-processing)
-  - [Benchmarking Tools](#benchmarking-tools)
-
-- **[7. Installation & Setup](#7-installation--setup)**
+- **[6. Getting Started](#6-getting-started)**
   - [Prerequisites](#prerequisites)
-  - [Package-Specific Setup](#package-specific-setup)
-  - [Dependencies](#dependencies)
-  - [Camera_ros Build Instructions](#camera_ros-build-instructions)
+  - [Installation](#installation)
+  - [Running the System](#running-the-system)
+  - [Image Viewer](#image-viewer)
+  - [Configuration](#configuration)
 
-- **[8. Configuration & Usage](#8-configuration--usage)**
-  - [Launch Files](#launch-files)
-  - [Parameter Tuning](#parameter-tuning)
-  - [Topic Monitoring](#topic-monitoring)
-
-- **[9. Development & Testing](#9-development--testing)**
-  - [Adding New Features](#adding-new-features)
-  - [Testing Framework](#testing-framework)
-  - [Performance Benchmarking](#performance-benchmarking)
-
-- **[10. Troubleshooting](#10-troubleshooting)**
+- **[7. Troubleshooting](#7-troubleshooting)**
   - [Common Issues](#common-issues)
   - [Performance Problems](#performance-problems)
   - [Hardware Debugging](#hardware-debugging)
   - [Build Dependencies](#build-dependencies)
   - [Parameter Type Issues](#parameter-type-issues)
-
-- **Additional Resources**
-  - [API Documentation](#api-documentation)
-  - [Contributing](#contributing)
-  - [License](#license)
 
 ---
 
@@ -109,11 +114,8 @@ Control your robot through intuitive hand gestures and body poses!
 cd ~/GestureBot/gesturebot_ws
 source activate_gesturebot.sh
 
-# Launch object detection system with manual annotations
-ros2 launch gesturebot object_detection.launch.py \
-    camera_format:=RGB888 \
-    buffer_logging_enabled:=false \
-    enable_performance_tracking:=false
+# Launch object detection system with annotated images
+ros2 launch gesturebot object_detection.launch.py camera_format:=RGB888
 
 # Launch pose detection system with 33-point landmarks
 ros2 launch gesturebot pose_detection.launch.py
@@ -125,14 +127,12 @@ ros2 launch gesturebot pose_navigation_bridge.launch.py
 ros2 launch gesturebot person_following.launch.py
 
 # View annotated vision output (in separate terminal)
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated"]' \
-    display_fps:=10.0 \
-    show_fps_overlay:=true
+ros2 run gesturebot image_viewer_node.py --ros-args \
+    -p image_topic:=/vision/objects/annotated
 
 # View pose detection with skeleton visualization
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/poses/annotated"]'
+ros2 run gesturebot image_viewer_node.py --ros-args \
+    -p image_topic:=/vision/poses/annotated
 
 # Test package functionality
 python3 -c "import rclpy, mediapipe; print('✅ gesturebot package ready!')"
@@ -163,9 +163,6 @@ source install/setup.bash
 python3 -c "import rclpy, mediapipe; print('✅ gesturebot package ready!')"
 ```
 
-![Quick Start Demo](media/quick_start_demo.gif)
-<!-- TODO: Record GIF showing complete setup and launch process -->
-
 ## 1. Vision System Architecture
 
 The GestureBot vision system is built on a **modular architecture** designed for flexibility, reusability, and ease of development:
@@ -183,7 +180,7 @@ The GestureBot vision system is built on a **modular architecture** designed for
 - **Reusable Message Definitions**: Custom ROS 2 messages (`DetectedObjects`, `HandGesture`, `PoseLandmarks`) for structured vision data
 - **Separation of Concerns**: Vision processing (`ros2_mediapipe`) is decoupled from application logic (`gesturebot`)
 
-### Hardware Components
+### Hardware Architecture
 
 The GestureBot platform integrates several hardware components for autonomous vision-based navigation and human-robot interaction.
 
@@ -252,15 +249,17 @@ flowchart TB
 
 | Image | Description |
 |-------|-------------|
-| ![Enclosure Front](media/hardware/enclosurefront.jpg) | **Enclosure Front**: 3D-printed housing front view with camera, LCD, and LED matrix |
+| ![IMX219 1080P Camera](media/hardware/camera.jpeg) | **Camera**: IMX219 1080P |
+| ![MAX7219 LED Matrix](media/hardware/ledmatrix.jpeg) | **8x8 LED Matrix**: MAX7219 SPI |
 | ![Enclosure Back](media/hardware/enclosureback.jpg) | **Enclosure Back**: 3D-printed housing back view with mounted components |
+| ![Enclosure Front](media/hardware/enclosurefront.jpg) | **Enclosure Front**: 3D-printed housing front view with camera, LCD, and LED matrix |
 | ![Mobile Platform](media/hardware/irobot.jpg) | **Mobile Platform**: iRobot Create 2 |
 
 ### Software Architecture
 
 The software stack is organized into distinct layers, from low-level camera drivers to high-level navigation controllers.
 
-#### Software Stack Diagram
+#### Component Layout
 
 ```mermaid
 flowchart TB
@@ -324,8 +323,6 @@ flowchart TB
     CTRL -->|"/cmd_vel"| CREATEDRV
 ```
 
-#### Software Layer Description
-
 | Layer | Components | Description |
 |-------|------------|-------------|
 | **Driver Layer** | `libcamera`, `create_driver` | Low-level hardware access: camera via libcamera/camera_ros publishing `/camera/image_raw`, robot control via create_driver subscribing to `/cmd_vel` |
@@ -333,7 +330,83 @@ flowchart TB
 | **Vision Processing** | `ros2_mediapipe` | MediaPipe for ML inference (uses TensorFlow Lite models internally), OpenCV for image manipulation, three specialized vision nodes |
 | **Application Layer** | `gesturebot` | Navigation controllers translating vision results to robot commands, unified image viewer for visualization |
 
-#### Core ROS 2 Packages
+#### Class Structure
+
+The `ros2_mediapipe` package implements a layered architecture with async threading and lock-based frame dropping for efficient real-time processing.
+
+```mermaid
+classDiagram
+    direction TB
+
+    %% Core Layer (Non-ROS)
+    class LockLifecycleManager {
+        +lock: threading.Lock
+        -_lock_holders: Set~int~
+        +acquire_for_timestamp(ts_ms) bool
+        +release_for_timestamp(ts_ms) bool
+        +release_on_error(ts_ms) bool
+    }
+
+    class detector_factory {
+        <<module>>
+        +create_object_detector()
+        +create_gesture_recognizer()
+        +create_pose_landmarker()
+    }
+
+    %% Common Layer (ROS 2 Base)
+    class MediaPipeBaseNode {
+        <<abstract>>
+        +processing_lock: Lock
+        +image_callback(msg)
+        -_process_frame_async(frame, ts)
+        +process_frame(frame, ts)*
+        +publish_results(results, ts)*
+    }
+
+    class MediaPipeCallbackMixin {
+        <<mixin>>
+        -_lock_manager: LockLifecycleManager
+        +create_callback(type) Callable
+        +_acquire_processing_lock(ts_ms) bool
+        +_release_processing_lock(ts_ms)
+        +_process_callback_results()*
+    }
+
+    %% Controller Layer
+    class MediaPipeController {
+        <<abstract>>
+        +is_ready() bool*
+        +detect_async(image, ts)*
+        +close()*
+    }
+
+    class ObjectDetectionController {
+        -_detector: ObjectDetector
+        +detect_async(mp_image, ts_ms)
+    }
+
+    %% Node Layer
+    class ObjectDetectionNode {
+        +controller: ObjectDetectionController
+        +process_frame(frame, ts)
+        +_process_callback_results()
+        +publish_results(results, ts)
+    }
+
+    %% Relationships
+    MediaPipeCallbackMixin --> LockLifecycleManager : uses
+    ObjectDetectionController --> detector_factory : creates via
+    ObjectDetectionController ..|> MediaPipeController : implements
+    ObjectDetectionNode --|> MediaPipeBaseNode : extends
+    ObjectDetectionNode --|> MediaPipeCallbackMixin : mixes in
+    ObjectDetectionNode --> ObjectDetectionController : has
+    MediaPipeBaseNode --> MediaPipeCallbackMixin : calls via hasattr()
+```
+
+#### ROS 2 Package Structure
+
+The GestureBot workspace contains the following ROS 2 packages:
 
 | Package | Description |
 |---------|-------------|
@@ -343,82 +416,133 @@ flowchart TB
 | `create_driver` | iRobot Create 2 driver (from `create_robot` meta-package, uses `libcreate`) |
 | `cv_bridge` | OpenCV-ROS 2 image conversion utility |
 
-#### Unified Image Viewer System
+The `ros2_mediapipe` package is organized into the following layers:
 
-**✅ Implementation Status: COMPLETE**
+| Layer | Directory | Description |
+|-------|-----------|-------------|
+| **Core** | `mpipe/core/` | Non-ROS components: `LockLifecycleManager` for thread-safe lock tracking, factory functions for MediaPipe detectors |
+| **Common** | `mpipe/common/` | ROS 2 base classes: `MediaPipeBaseNode` provides threading, `MediaPipeCallbackMixin` provides callback chain |
+| **Controller** | `mpipe/controllers/` | MediaPipe wrappers implementing `MediaPipeController` interface |
+| **Node** | `mpipe/nodes/` | Concrete ROS 2 nodes using multiple inheritance |
 
-The GestureBot vision system features a **unified image viewer architecture** that replaces the previous separate image viewer nodes with a single, efficient multi-topic display system.
+#### Control Flow
 
-![Unified Image Viewer Demo](media/demos/unified_image_viewer_demo.gif)
-<!-- Multi-window display showing object detection and gesture recognition simultaneously -->
+##### Successful Processing
 
-**Key Features:**
-- **Single Node Architecture**: One `UnifiedImageViewerNode` replaces multiple separate viewers
-- **Simultaneous Display**: View multiple vision streams in separate windows
-- **Resource Efficient**: Reduced memory footprint and CPU usage compared to multiple viewer processes
-- **Per-topic FPS Tracking**: Individual performance monitoring for each displayed topic
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Cam as /camera/image_raw
+    participant CB as image_callback<br/>(ROS Thread)
+    participant Thr as Worker Thread<br/>(_process_frame_async)
+    participant LM as LockLifecycleManager
+    participant Node as ObjectDetectionNode<br/>(process_frame)
+    participant Ctrl as ObjectDetectionController
+    participant MP as MediaPipe<br/>(LIVE_STREAM)
+    participant Mix as MediaPipeCallbackMixin<br/>(create_callback lambda)
+    participant Pub as publish_results()
 
-**Supported Topics:**
-- `/vision/objects/annotated` - Object detection with bounding boxes
-- `/vision/gestures/annotated` - Gesture recognition with hand landmarks
-- `/vision/poses/annotated` - Pose detection with 33-point skeleton visualization
-- `/camera/image_raw` - Raw camera feed
-- Any ROS 2 Image topic
+    Cam->>CB: Image msg
+    Note over CB: CvBridge.imgmsg_to_cv2()
+    CB->>Thr: threading.Thread(daemon=True).start()
+    activate Thr
+    Note over CB: Returns immediately<br/>(non-blocking)
 
-**Window Configuration:**
-```bash
-# Single topic display
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated"]'
+    Thr->>LM: _acquire_processing_lock(ts_ms)
+    LM->>LM: lock.acquire(blocking=False)
+    LM-->>Thr: True (acquired)
+    Note over LM: _lock_holders.add(ts_ms)
 
-# Multiple topics with custom window names
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated"]' \
-    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures"}'
+    Thr->>Node: process_frame(frame, ts)
+    activate Node
+    Note over Node: Store frame for callback
+    Node->>Ctrl: detect_async(mp_image, ts_ms)
+    Ctrl->>MP: _detector.detect_async()
+    MP-->>Ctrl: returns immediately
+    Ctrl-->>Node: returns
+    Node-->>Thr: None (callback-based)
+    deactivate Node
+    deactivate Thr
+    Note over Thr: Thread exits<br/>Lock STILL HELD
 
-# Multi-modal vision: Objects, Gestures, and Pose Detection
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/poses/annotated"]' \
-    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/poses\/annotated": "Poses"}'
+    Note over MP: ~100ms inference...
+
+    MP->>Mix: result_callback(result, img, ts_ms)
+    activate Mix
+    Mix->>Node: _process_callback_results()
+    Node-->>Mix: processed_results dict
+    Mix->>Pub: publish_results(results, ts)
+    activate Pub
+    Note over Pub: Publish to /vision/objects
+    deactivate Pub
+    Mix->>LM: _release_processing_lock(ts_ms)
+    LM->>LM: lock.release()
+    Note over LM: _lock_holders.discard(ts_ms)
+    deactivate Mix
 ```
 
-**Display Features:**
-- **Custom Window Titles**: Configurable per-topic window names
-- **FPS Overlay**: Shows display FPS and topic name for each window
-- **Screenshot Support**: Press 's' to save (filename includes topic identifier)
-- **Keyboard Controls**: 'q' or ESC to quit, 's' to screenshot all windows
+**Key Insights:**
+- Lock acquired in `_process_frame_async()` but released in MediaPipe callback, covering full inference cycle (~100ms)
+- Callback chain: `create_callback()` → `_process_callback_results()` → `publish_results()`
+- Worker thread exits after `detect_async()` returns, but lock remains held until callback fires
 
-**Raspberry Pi 5 Optimizations:**
-- **Frame Rate Limiting**: Configurable display throttling (default: 10 FPS)
-- **Efficient Image Conversion**: Handles both RGB8 and BGR8 formats automatically
-- **Memory Management**: Proper OpenCV window cleanup and resource management
-- **QoS Compatibility**: BEST_EFFORT reliability matches vision system publishers
+##### Frame Dropping
 
-**Resource Usage:**
-- **Memory**: ~15MB per active window (vs ~25MB for separate viewers)
-- **CPU**: <5% total at 10 FPS display rate for multiple topics
-- **Latency**: <50ms from message receipt to display
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Cam as Camera<br/>(30 FPS)
+    participant Thr as Worker Threads
+    participant LM as LockLifecycleManager
+    participant MP as MediaPipe
+    participant Mix as Callback
+
+    Note over Cam,Mix: Frame N arrives (t=0ms)
+    Cam->>Thr: Frame N
+    Thr->>LM: acquire_for_timestamp(N)
+    LM-->>Thr: True ✓
+    Note over LM: lock HELD for N
+    Thr->>MP: detect_async(N)
+
+    Note over Cam,Mix: Frame N+1 arrives (t=33ms)
+    Cam->>Thr: Frame N+1
+    Thr->>LM: acquire_for_timestamp(N+1)
+    LM-->>Thr: False ✗
+    Note over Thr: DROPPED<br/>(lock busy)
+
+    Note over Cam,Mix: Frame N+2 arrives (t=66ms)
+    Cam->>Thr: Frame N+2
+    Thr->>LM: acquire_for_timestamp(N+2)
+    LM-->>Thr: False ✗
+    Note over Thr: DROPPED<br/>(lock busy)
+
+    Note over MP: Inference completes (t=100ms)
+    MP->>Mix: result_callback(N)
+    Mix->>LM: release_for_timestamp(N)
+    Note over LM: lock RELEASED
+
+    Note over Cam,Mix: Frame N+3 arrives (t=100ms)
+    Cam->>Thr: Frame N+3
+    Thr->>LM: acquire_for_timestamp(N+3)
+    LM-->>Thr: True ✓
+    Note over LM: lock HELD for N+3
+    Thr->>MP: detect_async(N+3)
+```
+
+**Frame Dropping Details:**
+- At 30 FPS, frames arrive every ~33ms, but inference takes ~100ms
+- Frames arriving while lock is held fail `acquire(blocking=False)` and are discarded
+- Expected drop rate: ~67-75% at 30 FPS input with ~100ms inference time
+- `LockLifecycleManager` tracks which timestamp holds the lock via `_lock_holders` set
 
 ---
 
-## 2. GestureBot Features
-
-The GestureBot vision system leverages three core MediaPipe capabilities, each with a dedicated data flow from camera input to robot control output.
-
-The GestureBot vision system leverages three core MediaPipe capabilities, each with a dedicated data flow from camera input to robot control output.
-
-### Object Detection
+## 2. Object Detection
 
 | *Screen display* | *Click to watch on YouTube* |
 |:---------------------:|:---------------------:|
 | ![Object detection](media/demos/screen_matrix.gif) | [![Zoomed in](https://img.youtube.com/vi/_qbPXN9j0Wc/0.jpg)](https://youtu.be/_qbPXN9j0Wc) |
 | *Screen display* | *Click to watch on YouTube* |
-
-- **Model**: EfficientDet Lite (TensorFlow Lite optimized)
-- **Classes**: 80 COCO dataset objects (person, car, bottle, etc.)
-- **Confidence Threshold**: 0.5 (configurable)
-- **Max Results**: 5 objects per frame
-- **Performance**: 5 FPS @ 640x480 with 20ms exposure time
 
 #### Data Flow: Object Detection → Person Following
 
@@ -446,8 +570,6 @@ flowchart LR
 
     CAM --> CAMROS --> TOPIC1 --> OBJ --> TOPIC2 --> FOLLOW --> TOPIC3 --> ROBOT
 ```
-
-**Data Flow Description:**
 1. **Camera Capture**: Pi Camera captures frames via `camera_ros` node
 2. **Image Publishing**: Raw images published to `/camera/image_raw` topic
 3. **Object Detection**: `object_detection_node` processes frames using EfficientDet Lite model
@@ -455,171 +577,61 @@ flowchart LR
 5. **Person Following**: `person_following_controller` subscribes to detections and calculates approach velocity
 6. **Motion Commands**: Twist messages published to `/cmd_vel` for smooth person tracking
 
-**✅ Manual Annotation System:**
-- **Custom OpenCV Drawing**: Manual bounding boxes using cv2.rectangle() and cv2.putText()
-- **Color-Coded Confidence**: Green (≥70%), Yellow (≥50%), Red (<50%)
-- **Percentage Display**: Confidence scores shown as percentages (e.g., "person: 76%")
+#### Model Architecture
 
-**Configuration:**
-```yaml
-object_detection_node:
-  ros__parameters:
-    confidence_threshold: 0.5
-    max_results: 5
-    model_path: "models/efficientdet.tflite"
-    camera_format: "RGB888"
-    frame_rate: 5.0
-    exposure_time: 20000  # 20ms for fast capture
+**EfficientDet-Lite** is a single-shot object detector optimized for edge devices:
+
+```
+Input Image (320×320×3 RGB)
+         ↓
+┌─────────────────────────────┐
+│  EfficientNet-Lite Backbone │  ← Feature extraction (ImageNet pretrained)
+└─────────────────────────────┘
+         ↓
+┌─────────────────────────────┐
+│   BiFPN Feature Pyramid     │  ← Multi-scale feature fusion
+└─────────────────────────────┘
+         ↓
+┌─────────────────────────────┐
+│  Class + Box Prediction     │  ← Per-anchor predictions
+└─────────────────────────────┘
+         ↓
+Output: Bounding boxes + Class labels + Confidence scores
 ```
 
-### Gesture Recognition
+- **Architecture**: Single-shot detector (no region proposal stage)
+- **Backbone**: EfficientNet-Lite (MobileNet-inspired, optimized for mobile)
+- **Input Shape**: 320×320×3 (Lite0) or 448×448×3 (Lite2)
+- **Output**: Up to N bounding boxes with 80 COCO class probabilities
+- **Classes**: 80 COCO categories including person, vehicle, animal, furniture, electronics
 
-**✅ Implementation Status: COMPLETE**
-- **Model**: MediaPipe Gesture Recognizer (gesture_recognizer.task)
-- **Hand Landmarks**: 21-point hand skeleton with connections
-- **Dual Hand Support**: Track up to 2 hands simultaneously
-- **Confidence Threshold**: 0.5 (configurable)
-- **Performance**: Real-time processing @ 640x480 with BGR888 format
+#### Model Variants & Quantization
 
-#### Data Flow: Gesture Recognition → Navigation
+**Available Models:**
 
-```mermaid
-flowchart LR
-    subgraph INPUT["📷 Input"]
-        CAM["Pi Camera"]
-        CAMROS["camera_ros"]
-    end
+| Model | Input Size | Quantization | File Size | CPU Latency* | GPU Latency* | Accuracy (mAP) |
+|-------|------------|--------------|-----------|--------------|--------------|----------------|
+| EfficientDet-Lite0 | 320×320 | int8 | ~4.4 MB | 29 ms | 24 ms | 29.9% |
+| EfficientDet-Lite0 | 320×320 | float16 | ~6.9 MB | 54 ms | 28 ms | 30.0% |
+| EfficientDet-Lite0 | 320×320 | float32 | ~13 MB | 54 ms | 28 ms | 30.0% |
+| EfficientDet-Lite2 | 448×448 | int8 | ~7.2 MB | 89 ms | 35 ms | 36.0% |
+| EfficientDet-Lite2 | 448×448 | float16 | ~11 MB | 198 ms | 47 ms | 36.2% |
+| SSD MobileNetV2 | 256×256 | int8 | ~3.6 MB | 24 ms | — | 22.4% |
+| SSD MobileNetV2 | 256×256 | float32 | ~14 MB | 31 ms | — | 22.6% |
 
-    subgraph VISION["🔍 Vision Processing"]
-        TOPIC1["/camera/image_raw"]
-        GES["gesture_recognition_node<br/>(MediaPipe Hands)"]
-        TOPIC2["/vision/gestures<br/>(HandGesture)"]
-    end
+*Benchmarks from Google AI Edge documentation (Pixel 6 CPU/GPU)
 
-    subgraph CONTROL["🎮 Control"]
-        GNAV["gesture_navigation_bridge"]
-        TOPIC3["/cmd_vel"]
-        NAV2["navigate_to_pose<br/>(Nav2 Action)"]
-    end
+**Quantization Trade-offs:**
 
-    subgraph OUTPUT["🤖 Output"]
-        ROBOT["iRobot Create 2"]
-    end
+| Type | Precision | Size Reduction | Speed | GPU Support | Use Case |
+|------|-----------|----------------|-------|-------------|----------|
+| **int8** | 8-bit integer | ~75% smaller | Fastest on CPU | Limited | Battery-constrained, edge devices |
+| **float16** | 16-bit float | ~50% smaller | Fast | Yes | Balanced performance/accuracy |
+| **float32** | 32-bit float | Baseline | Baseline | Yes | Maximum accuracy, development |
 
-    CAM --> CAMROS --> TOPIC1 --> GES --> TOPIC2 --> GNAV
-    GNAV --> TOPIC3 --> ROBOT
-    GNAV -.-> NAV2
-```
+**Raspberry Pi 5 Recommendation:** Use **EfficientDet-Lite0 float16** for the best balance of accuracy and performance. The int8 variant offers faster CPU inference but may have compatibility issues with some TFLite delegates.
 
-**Data Flow Description:**
-1. **Camera Capture**: Pi Camera captures frames via `camera_ros` node
-2. **Image Publishing**: Raw images published to `/camera/image_raw` topic
-3. **Gesture Recognition**: `gesture_recognition_node` detects hand landmarks and classifies gestures
-4. **Gesture Results**: Recognized gestures published to `/vision/gestures` with confidence scores
-5. **Navigation Bridge**: `gesture_navigation_bridge` maps gestures to navigation commands
-6. **Motion Commands**: Direct velocity commands to `/cmd_vel` or goal-based navigation via Nav2
-
-![Gesture Recognition Demo](media/demos/gesture_recognition_demo.gif)
-<!-- Complete hand landmarks visualization with 21 points and skeleton connections -->
-
-**Supported Gestures:**
-| Gesture | Action | Description |
-|---------|--------|-------------|
-| 👍 Thumbs Up | Start Navigation | Begin autonomous navigation |
-| 👎 Thumbs Down | Stop Navigation | Halt current movement |
-| ✋ Open Palm | Pause | Temporarily pause navigation |
-| ✊ Fist | Emergency Stop | Immediate full stop |
-| ✌️ Peace Sign | Follow Mode | Enable person following |
-| 👆 Pointing | Directional | Move in pointed direction |
-| 👋 Wave | Return Home | Navigate to home position |
-
-**Configuration:**
-```yaml
-gesture_recognition_node:
-  ros__parameters:
-    confidence_threshold: 0.5
-    max_hands: 2
-    gesture_stability_threshold: 0.5  # seconds
-    publish_annotated_images: true
-    camera_format: "BGR888"
-```
-
-### Pose Detection
-
-**✅ Implementation Status: COMPLETE**
-- **Model**: MediaPipe PoseLandmarker (pose_landmarker.task)
-- **33 Body Landmarks**: Full body pose detection with skeletal connections
-- **Multi-person Support**: Track up to 2 people simultaneously
-- **Real-time Performance**: 3-7 FPS @ 640x480 with RGB888 format
-- **Headless Operation**: No X11/UI dependencies required
-
-#### Data Flow: Pose Detection → Navigation
-
-```mermaid
-flowchart LR
-    subgraph INPUT["📷 Input"]
-        CAM["Pi Camera"]
-        CAMROS["camera_ros"]
-    end
-
-    subgraph VISION["🔍 Vision Processing"]
-        TOPIC1["/camera/image_raw"]
-        POSE["pose_detection_node<br/>(MediaPipe Pose)"]
-        TOPIC2["/vision/poses<br/>(PoseLandmarks)"]
-    end
-
-    subgraph CONTROL["🎮 Control"]
-        PNAV["pose_navigation_bridge"]
-        TOPIC3["/cmd_vel<br/>(Twist)"]
-    end
-
-    subgraph OUTPUT["🤖 Output"]
-        ROBOT["iRobot Create 2"]
-    end
-
-    CAM --> CAMROS --> TOPIC1 --> POSE --> TOPIC2 --> PNAV --> TOPIC3 --> ROBOT
-```
-
-**Data Flow Description:**
-1. **Camera Capture**: Pi Camera captures frames via `camera_ros` node
-2. **Image Publishing**: Raw images published to `/camera/image_raw` topic
-3. **Pose Detection**: `pose_detection_node` extracts 33 body landmarks per person
-4. **Pose Classification**: Landmarks analyzed to classify into one of 4 navigation poses
-5. **Navigation Bridge**: `pose_navigation_bridge` converts classified poses to motion commands
-6. **Motion Commands**: Twist messages published to `/cmd_vel` for robot control
-
-![Pose Detection Demo](media/demos/pose_detection_demo.gif)
-<!-- Real-time pose detection with 33-point skeleton visualization -->
-
-**4-Pose Navigation System:**
-| Pose | Action | Detection Criteria |
-|------|--------|-------------------|
-| 🙌 Arms Raised | Move Forward | Both wrists above shoulders |
-| 👈 Pointing Left | Turn Left | Left arm extended horizontally |
-| 👉 Pointing Right | Turn Right | Right arm extended horizontally |
-| 🧍 T-Pose | Stop | Both arms extended horizontally |
-
-**Configuration:**
-```yaml
-pose_detection_node:
-  ros__parameters:
-    confidence_threshold: 0.5
-    max_poses: 2
-    model_path: "models/pose_landmarker.task"
-    camera_format: "RGB888"
-    frame_rate: 5.0
-    publish_annotated_images: true
-```
-
----
-
-## 3. Evaluation
-
-This section describes how model performance is measured for each detection type. The evaluation methodology differs based on the task: object detection uses spatial matching (IoU), gesture recognition uses classification accuracy, and pose detection uses keypoint similarity metrics.
-
-### Accuracy Metrics
-
-#### Object Detection: mAP (Mean Average Precision)
+#### Model Performance
 
 Object detection accuracy is evaluated using **COCO-style mAP** (mean Average Precision), the standard metric for bounding box detection tasks.
 
@@ -631,6 +643,52 @@ Object detection accuracy is evaluated using **COCO-style mAP** (mean Average Pr
 5. **Compute AP per Class**: Interpolate precision at 101 recall thresholds (0.00, 0.01, ..., 1.00); AP = mean of these 101 precision values
 6. **Average Across Classes**: mAP = mean of AP values for all classes with ground truth instances
 
+##### Model Comparison Summary
+
+*Benchmarked on Raspberry Pi 5. Evaluated on 50 COCO validation images.*
+
+| Model | Quant | mAP@0.50 | mAP@0.50:0.95 | mAP@0.75 | Recall | Latency (ms) | FPS |
+|-------|-------|----------|---------------|----------|--------|--------------|-----|
+| EfficientDet-Lite0 | int8 | **0.426** | 0.302 | 0.317 | 0.311 | **52.5** | **19.1** |
+| **EfficientDet-Lite0** | **float16** | **0.416** | **0.314** | **0.349** | **0.326** | **110.9** | **9.0** |
+| EfficientDet-Lite0 | float32 | 0.416 | 0.314 | 0.349 | 0.325 | 100.4 | 10.0 |
+| EfficientDet-Lite2 | int8 | 0.458 | 0.344 | 0.372 | 0.372 | 143.8 | 7.0 |
+| EfficientDet-Lite2 | float16 | **0.477** | **0.364** | **0.380** | 0.374 | 339.6 | 2.9 |
+| EfficientDet-Lite2 | float32 | 0.471 | 0.359 | 0.373 | **0.375** | 328.7 | 3.0 |
+| SSD MobileNetV2 | float32 | 0.352 | 0.244 | 0.276 | 0.271 | 68.8 | 14.5 |
+
+*Baseline model (EfficientDet-Lite0 float16) in bold. Best values per column also highlighted.*
+
+![Model Comparison](media/evaluation/model_comparison_image_mode_grid.png)
+
+##### Raspberry Pi 5 Recommendation
+
+**Recommended: EfficientDet-Lite0 float16** for GestureBot deployment.
+
+| Model | Accuracy | Speed | Why/Why Not |
+|-------|----------|-------|-------------|
+| **EfficientDet-Lite0 float16** | mAP=0.416 | 9.0 FPS | ✅ Best balance for person following |
+| EfficientDet-Lite0 int8 | mAP=0.426 | 19.1 FPS | Alternative if CPU headroom needed |
+| EfficientDet-Lite2 int8 | mAP=0.458 | 7.0 FPS | Consider if accuracy is critical |
+| SSD MobileNetV2 float32 | mAP=0.352 | 14.5 FPS | Fastest, but lower accuracy |
+
+**Trade-off Analysis:**
+
+- **EfficientDet-Lite0 int8 vs float16**: int8 provides +112% speed (19.1 vs 9.0 FPS) with +2.4% accuracy improvement (0.426 vs 0.416 mAP). Choose int8 if running additional ROS nodes that need CPU headroom.
+
+- **EfficientDet-Lite2 vs Lite0**: Lite2 int8 offers +10% mAP improvement (0.458 vs 0.416) at cost of -22% detection rate (7.0 vs 9.0 FPS). Consider if detection accuracy is more important than frame rate.
+
+- **SSD MobileNetV2**: Fastest option (14.5 FPS, +61% faster than baseline) but significantly lower accuracy (mAP=0.352, -15%). Only suitable if speed is critical and detection quality can be compromised.
+
+##### Key Findings
+
+1. **EfficientDet-Lite0 int8** is the speed champion at **19.1 FPS** - 2x faster than float16
+2. **EfficientDet-Lite0 float16** provides best accuracy/speed balance at **9.0 FPS** with **0.416 mAP**
+3. **EfficientDet-Lite2 float16** achieves highest accuracy (**0.477 mAP**) but only **2.9 FPS**
+4. **int8 quantization** dramatically improves speed with modest accuracy improvement (~2%)
+
+##### Accuracy
+
 **Key Metrics:**
 | Metric | IoU Threshold | Description |
 |--------|---------------|-------------|
@@ -639,7 +697,7 @@ Object detection accuracy is evaluated using **COCO-style mAP** (mean Average Pr
 | mAP@0.75 | 0.75 | Strict localization requirement |
 | Recall@100 | 0.50:0.95 | Max recall with up to 100 detections per image |
 
-**Benchmark Results (EfficientDet Lite on Pi 5):**
+**Benchmark Results (EfficientDet-Lite0 float16):**
 | Metric | Value |
 |--------|-------|
 | mAP@0.50 | 0.416 |
@@ -647,6 +705,8 @@ Object detection accuracy is evaluated using **COCO-style mAP** (mean Average Pr
 | mAP@0.75 | 0.349 |
 | Recall@100 | 0.326 |
 | Test Images | 50 (COCO val2017 subset) |
+
+##### Precision-Recall Curve
 
 **Precision-Recall Curve (Person Class):**
 
@@ -732,8 +792,330 @@ This table shows how Average Precision is calculated by ranking all person detec
 
 </details>
 
+#### Configuration Reference
 
-#### Gesture Recognition: Classification Accuracy
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| `model_path` | string | `"models/efficientdet.tflite"` | Valid path | Path to TFLite model file |
+| `confidence_threshold` | float | `0.5` | 0.0–1.0 | Minimum score to accept detection |
+| `max_results` | int | `5` | -1 to ∞ | Maximum detections per frame (-1 = unlimited) |
+| `frame_skip` | int | `1` | 0 to ∞ | Frames to skip between processing (0 = every frame, 1 = every 2nd, 2 = every 3rd) |
+| `category_allowlist` | list | `[]` | COCO labels | Only detect these categories (empty = all) |
+| `category_denylist` | list | `[]` | COCO labels | Exclude these categories from detection |
+
+**Launch with Custom Parameters:**
+```bash
+# Default launch
+ros2 launch gesturebot object_detection.launch.py
+
+# With parameter overrides
+ros2 launch gesturebot object_detection.launch.py \
+    confidence_threshold:=0.5 \
+    max_results:=5 \
+    frame_skip:=0
+```
+
+> **Note:** Camera parameters (frame rate, exposure) are hardcoded in the launch file for optimal Pi 5 performance. See launch file comments for details.
+
+#### Parameter Tuning and Optimization
+
+The object detection pipeline has been systematically characterized for Raspberry Pi 5 through four parameter experiments: camera frame rate, exposure time, frame skip, and confidence threshold. Each experiment measured CPU usage, temperature, detection rate, object count, and confidence to identify optimal parameters for real-time person detection and following applications.
+
+##### Camera Frame Rate
+
+The camera frame rate significantly impacts system performance. The `FrameDurationLimits` parameter in the launch file controls frame timing (in microseconds). Lower values = higher frame rate.
+
+**Benchmark Results (Raspberry Pi 5, 640×480, EfficientDet-Lite0):**
+
+| Frame Rate | FrameDurationLimits | CPU Mean | CPU P95 | Temp Max | Detection Hz | Drop Rate |
+|------------|---------------------|----------|---------|----------|--------------|-----------|
+| 5 fps | `[200000, 200000]` | 32.5% | 34.5% | 49.4°C | 2.50 Hz | 49.6% |
+| **10 fps** | `[100000, 100000]` | 68.1% | 70.7% | 54.9°C | **4.96 Hz** | 48.8% |
+| 15 fps | `[66667, 66667]` | 95.5% | 100.5% | 58.2°C | 7.27 Hz | 46.9% |
+| 20 fps | `[50000, 50000]` | 78.9% | 79.8% | 55.4°C | 5.05 Hz | 73.6% |
+
+| CPU Usage Comparison | Frame Drop Rate Comparison |
+|:--------------------:|:--------------------------:|
+| ![CPU Comparison](media/benchmarks/camera_fps_cpu_comparison.png) | ![Drop Rate](media/benchmarks/camera_fps_drop_rate.png) |
+
+**Key Findings:**
+
+| Configuration | Assessment | Rationale |
+|---------------|------------|-----------|
+| **5 fps** | ❌ Too conservative | Low CPU (32%) but only 2.5 Hz detection rate |
+| **10 fps** | ✅ **Recommended** | Best balance: 68% CPU, ~5 Hz detection, stable temperature |
+| **15 fps** | ⚠️ CPU saturated | Hits 100% CPU, detection improves to 7.3 Hz but unsustainable |
+| **20 fps** | ❌ Counterproductive | Higher input rate causes more frame drops (73.6%), detection drops to 5 Hz |
+
+**Why 10 fps is optimal:**
+- **CPU headroom**: 68% average leaves ~30% for other ROS nodes and system tasks
+- **Detection throughput**: ~5 Hz detection rate is sufficient for person-following (human movement ~1-2 Hz)
+- **Thermal stability**: 55°C max temperature is well within safe operating range
+- **Frame efficiency**: Similar drop rate to 5 fps but double the detection output
+
+The optimal configuration is hardcoded in `object_detection.launch.py`:
+```python
+"FrameDurationLimits": [100000, 100000],  # 10 FPS - optimal for Pi 5
+```
+
+##### Camera Exposure Time
+
+The `ExposureTime` parameter controls sensor exposure in microseconds. Tested at 10 FPS (100000μs frame duration):
+
+| Exposure Time | ExposureTime | CPU Mean | Det Hz | Obj Count | Avg Conf | Notes |
+|---------------|--------------|----------|--------|-----------|----------|-------|
+| 10 ms | `10000` | 67.7% | 4.85 Hz | 1.0 | 0.69 | Darker image |
+| 15 ms | `15000` | 66.2% | 4.94 Hz | 1.0 | 0.59 |  |
+| **20 ms** | `20000` | 68.4% | 4.75 Hz | **1.7** | **0.67** | **Default** |
+| 25 ms | `25000` | 69.1% | 4.98 Hz | 1.8 | 0.63 | Brighter image |
+| 30 ms | `30000` | 69.2% | 4.96 Hz | 1.0 | 0.68 | Brighter image |
+
+| Object Detection Count | Detection Confidence |
+|:----------------------:|:--------------------:|
+| ![Object Count](media/benchmarks/camera_exposure_object_count.png) | ![Confidence](media/benchmarks/camera_exposure_confidence.png) |
+
+**Key Findings:**
+- **CPU usage is stable** across all exposure times (~66-69%)
+- **Object detection count peaks at 20-25ms** exposure (1.7-1.8 objects vs 1.0 at extremes)
+- **Confidence is relatively stable** (0.59-0.69) with slight dip at 15ms
+- **20ms (default) is optimal** for indoor lighting: best balance of object detection and confidence
+
+The optimal configuration is hardcoded in `object_detection.launch.py`:
+```python
+"ExposureTime": 20000,  # 20ms - optimal for indoor lighting
+```
+
+##### Frame Skip
+
+The `frame_skip` parameter controls how many camera frames are skipped between processing cycles. Higher values reduce CPU load but decrease detection responsiveness.
+
+| frame_skip | Processing | CPU Mean | CPU P95 | Det Hz | Obj Count | Avg Conf | Notes |
+|------------|------------|----------|---------|--------|-----------|----------|-------|
+| **0** | All frames | 70.5% | 72.4% | 4.98 Hz | 1.0 | 0.55 | **Default** |
+| 1 | Every 2nd frame | 66.7% | 69.9% | 4.73 Hz | 1.0 | 0.56 |  |
+| 2 | Every 3rd frame | 45.9% | 48.0% | 3.29 Hz | 1.0 | 0.56 |  |
+| 3 | Every 4th frame | 35.9% | 36.8% | 2.47 Hz | 1.0 | 0.57 | Max CPU savings |
+
+| CPU Comparison | Detection Rate |
+|:--------------:|:--------------:|
+| ![CPU Comparison](media/benchmarks/camera_frame_skip_cpu_comparison.png) | ![Detection Rate](media/benchmarks/camera_frame_skip_detection_rate.png) |
+
+**Key Findings:**
+- **CPU usage scales linearly** with frame_skip: 70% (fs0) → 67% (fs1) → 46% (fs2) → 36% (fs3)
+- **Detection rate decreases proportionally**: 5 Hz → 4.7 Hz → 3.3 Hz → 2.5 Hz
+- **Detection quality (confidence) remains stable** across all frame_skip values (~0.55-0.57)
+- **70% CPU usage leaves ~30% headroom** for other processes on Raspberry Pi 5
+- **Built-in frame drop protection**: The threading pattern with lock mechanism handles overload gracefully
+
+**Recommendations:**
+- **Person following**: Use `frame_skip=0` (default) for maximum detection responsiveness (~5 Hz)
+- **Static object detection**: `frame_skip=2` or `3` acceptable for slower-moving scenarios
+- **CPU-constrained systems**: Increase `frame_skip` to free CPU for other nodes
+
+The optimal configuration is hardcoded in `object_detection.launch.py`:
+```python
+"frame_skip": 0,  # Process all frames - maximum detection responsiveness
+```
+
+##### Confidence Threshold
+
+The `confidence_threshold` parameter filters detections post-inference. Tested at 10 FPS, 20ms exposure, frame_skip=0:
+
+| Threshold | CPU Mean | Det Hz | Obj Count | Avg Conf | Det Rate | Notes |
+|-----------|----------|--------|-----------|----------|----------|-------|
+| 0.3 | 64.8% | 5.00 Hz | 4.0 | 0.48 | 100% | More false positives |
+| 0.4 | 62.8% | 5.00 Hz | 3.2 | 0.50 | 100% |  |
+| **0.5** | 63.5% | 5.00 Hz | 1.6 | 0.55 | 100% | **Default** |
+| 0.6 | 62.5% | 3.06 Hz | 1.0 | 0.61 | 100% |  |
+| 0.7 | 63.2% | N/A | N/A | N/A | N/A | May miss valid detections |
+
+| Object Count | Detection Hz |
+|:------------:|:------------:|
+| ![Object Count](media/benchmarks/confidence_threshold_object_count.png) | ![Detection Hz](media/benchmarks/confidence_threshold_detection_hz.png) |
+
+**Key Findings:**
+- **CPU impact is minimal** - Threshold filtering occurs post-inference
+- **Lower thresholds (0.3-0.4)** detect more objects but include false positives
+- **Higher thresholds (0.6+)** reduce detection rate as fewer detections pass the filter
+- **0.7 threshold too aggressive** - No detections passed for test scene (cup at ~0.55-0.61 confidence)
+
+**Recommendations:**
+- **General use**: Keep `confidence_threshold=0.5` (default) for balanced sensitivity/precision
+- **Noisy environments**: Increase to `0.6` to reduce false positives
+- **High recall needed**: Lower to `0.3-0.4` but expect more false detections
+
+#### System Performance - Latency/CPU/Memory
+
+This section summarizes the performance characteristics of the object detection pipeline (EfficientDet-Lite0 float16) on Raspberry Pi 5 using the recommended configuration.
+
+##### Latency Characterization
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **Model Inference** | 110.9 ms | Pure inference time (excludes preprocessing) |
+| **Theoretical FPS** | 9.0 | Based on inference latency only |
+| **End-to-End Detection Rate** | ~5 Hz | Real-world with 10 FPS camera input |
+
+**End-to-End Pipeline Latency:**
+
+| Pipeline Stage | Typical Latency |
+|----------------|-----------------|
+| Camera Capture | 100 ms (10 FPS) |
+| Image Conversion (cv_bridge) | <5 ms |
+| Model Inference | 111 ms |
+| Result Publishing | <1 ms |
+| **Total Pipeline** | **~200 ms** |
+
+##### Resource Utilization
+
+Measured during sustained operation at 10 FPS camera input (recommended configuration):
+
+| Resource | Value | Notes |
+|----------|-------|-------|
+| **CPU Usage (Mean)** | 68.1% | Leaves ~30% headroom for other ROS nodes |
+| **CPU Usage (P95)** | 70.7% | Peak usage during detection bursts |
+| **Memory (RSS)** | ~350 MB | Object detection node process |
+| **Temperature (Max)** | 54.9°C | Well below 85°C throttle threshold |
+| **Frame Drop Rate** | 48.8% | Expected due to async processing |
+
+**Thermal Considerations:**
+- Pi 5 throttles at 85°C; measured max of 54.9°C provides 30°C headroom
+- Active cooling recommended for sustained operation
+- Passive cooling sufficient at lower frame rates (<5 FPS)
+
+---
+
+## 3. Gesture Recognition
+
+Real-time hand gesture recognition using MediaPipe, detecting 7 gesture classes (Closed_Fist, Open_Palm, Pointing_Up, Thumb_Down, Thumb_Up, Victory, ILoveYou) with 21-point hand landmarks for robot control.
+
+| *Screen recording* | *Click to watch on YouTube* |
+|:---------------------:|:---------------------:|
+| ![Gesture recognition demo](media/demos/gesture.gif) | [![Gesture recognition video](https://img.youtube.com/vi/ttKg7M3_JEA/0.jpg)](https://youtu.be/ttKg7M3_JEA) |
+| *Hand landmarks and gesture classification* | *Full demonstration video* |
+
+- **Model**: MediaPipe Gesture Recognizer (gesture_recognizer.task)
+- **Hand Landmarks**: 21-point hand skeleton with connections
+- **Dual Hand Support**: Track up to 2 hands simultaneously
+- **Confidence Threshold**: 0.5 (configurable)
+- **Performance**: Real-time processing @ 640x480 with BGR888 format
+
+#### Data Flow: Gesture Recognition → Navigation
+
+```mermaid
+flowchart LR
+    subgraph INPUT["📷 Input"]
+        CAM["Pi Camera"]
+        CAMROS["camera_ros"]
+    end
+
+    subgraph VISION["🔍 Vision Processing"]
+        TOPIC1["/camera/image_raw"]
+        GES["gesture_recognition_node<br/>(MediaPipe Hands)"]
+        TOPIC2["/vision/gestures<br/>(HandGesture)"]
+    end
+
+    subgraph CONTROL["🎮 Control"]
+        GNAV["gesture_navigation_bridge"]
+        TOPIC3["/cmd_vel"]
+        NAV2["navigate_to_pose<br/>(Nav2 Action)"]
+    end
+
+    subgraph OUTPUT["🤖 Output"]
+        ROBOT["iRobot Create 2"]
+    end
+
+    CAM --> CAMROS --> TOPIC1 --> GES --> TOPIC2 --> GNAV
+    GNAV --> TOPIC3 --> ROBOT
+    GNAV -.-> NAV2
+```
+
+**Data Flow Description:**
+1. **Camera Capture**: Pi Camera captures frames via `camera_ros` node
+2. **Image Publishing**: Raw images published to `/camera/image_raw` topic
+3. **Gesture Recognition**: `gesture_recognition_node` detects hand landmarks and classifies gestures
+4. **Gesture Results**: Recognized gestures published to `/vision/gestures` with confidence scores
+5. **Navigation Bridge**: `gesture_navigation_bridge` maps gestures to navigation commands
+6. **Motion Commands**: Direct velocity commands to `/cmd_vel` or goal-based navigation via Nav2
+
+![Gesture Recognition Demo](media/demos/gesture_recognition_demo.gif)
+<!-- Complete hand landmarks visualization with 21 points and skeleton connections -->
+
+#### Model Architecture
+
+**MediaPipe Gesture Recognizer** uses a multi-stage pipeline bundled in a single `.task` file:
+
+```
+Input Image (variable size)
+         ↓
+┌─────────────────────────────┐
+│   Palm Detection Model      │  ← BlazePalm: Locates hands in frame
+│   (Single-shot detector)    │     Returns palm bounding box + 7 keypoints
+└─────────────────────────────┘
+         ↓
+┌─────────────────────────────┐
+│   Hand Landmark Model       │  ← Extracts 21 3D landmarks per hand
+│   (Cropped hand region)     │     Input: 224×224 cropped hand image
+└─────────────────────────────┘
+         ↓
+┌─────────────────────────────┐
+│   Gesture Embedding Model   │  ← Converts landmarks to feature vector
+└─────────────────────────────┘
+         ↓
+┌─────────────────────────────┐
+│   Gesture Classifier        │  ← 7-class classification head
+└─────────────────────────────┘
+         ↓
+Output: Gesture label + Confidence + 21 hand landmarks + Handedness
+```
+
+**Pipeline Details:**
+- **Palm Detection (BlazePalm)**: Single-shot detector that locates hands using palm regions (more reliable than full hand detection due to consistent palm shape)
+- **Hand Landmarks**: 21 3D keypoints per hand (wrist, thumb CMC/MCP/IP/TIP, index MCP/PIP/DIP/TIP, etc.)
+- **Landmark Format**: Normalized coordinates (x, y in [0,1] relative to image, z represents depth relative to wrist)
+- **Tracking Optimization**: In VIDEO/LIVE_STREAM modes, uses previous frame landmarks to skip palm detection when `min_hand_presence_confidence` threshold is met
+- **Handedness Detection**: Classifies each hand as "Left" or "Right" with confidence score
+
+**Built-in Gestures (7 total):**
+
+| Gesture | Internal Name | Description |
+|---------|---------------|-------------|
+| 👊 | `Closed_Fist` | All fingers closed |
+| 🖐️ | `Open_Palm` | All fingers extended |
+| ☝️ | `Pointing_Up` | Index finger extended upward |
+| 👎 | `Thumb_Down` | Thumb pointing down |
+| 👍 | `Thumb_Up` | Thumb pointing up |
+| ✌️ | `Victory` | Index and middle fingers extended |
+| 🤟 | `ILoveYou` | Thumb, index, and pinky extended |
+
+#### Model Variants & Quantization
+
+**Single Model Variant:**
+
+Unlike object detection (which offers multiple EfficientDet variants), MediaPipe provides only one gesture recognizer model: `gesture_recognizer.task`. This bundle contains all required sub-models:
+
+| Sub-Model | Purpose | Input Size |
+|-----------|---------|------------|
+| BlazePalm | Palm detection | Full image (variable) |
+| HandLandmarker | 21-point landmark extraction | 224×224 (cropped hand) |
+| Gesture Embedding | Feature extraction from landmarks | 21 landmarks |
+| Gesture Classifier | 7-class classification | Embedding vector |
+
+**Quantization:**
+
+| Component | Quantization | Notes |
+|-----------|--------------|-------|
+| Palm Detector | float16 | Optimized for mobile GPU |
+| Hand Landmarker | float16 | 21-point 3D landmark regression |
+| Gesture Classifier | float16 | 7-class classification head |
+
+**Reference Benchmark (Pixel 6):**
+- CPU Latency: 16.76 ms (~60 FPS theoretical)
+- GPU Latency: 20.87 ms (~48 FPS theoretical)
+
+**Note:** Unlike object detection, MediaPipe does not provide int8 quantized gesture models or multiple model sizes. The float16 models are already optimized for edge deployment.
+
+#### Model Performance
 
 Gesture recognition is a **per-frame classification task** where the model predicts a gesture class for each detected hand. Unlike object detection, there is no spatial localization to evaluate—only whether the predicted gesture matches the ground truth.
 
@@ -749,152 +1131,483 @@ Gesture recognition is a **per-frame classification task** where the model predi
 - Single-label classification per hand, not multi-object detection
 - No IoU-based matching required
 
-**Supported Gestures:**
-- `thumbs_up`, `thumbs_down`, `peace_sign`, `pointing_up`, `open_palm`, `closed_fist`, `victory`
+**Supported Gestures (Internal Names):**
+- `Closed_Fist`, `Open_Palm`, `Pointing_Up`, `Thumb_Down`, `Thumb_Up`, `Victory`, `ILoveYou`
 
-#### Pose Detection: OKS-based AP
+**Note:** The model also outputs `None` when no recognizable gesture is detected.
 
-Pose detection accuracy uses **Object Keypoint Similarity (OKS)** instead of IoU for matching predictions to ground truth. OKS measures how close predicted keypoints are to ground truth keypoints, normalized by the person's scale.
+#### Configuration Reference
 
-**OKS Formula:**
+**ROS 2 Node Parameters:**
+
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| `model_path` | string | `"models/gesture_recognizer.task"` | Valid path | Path to gesture recognizer task bundle |
+| `confidence_threshold` | float | `0.7` | 0.0–1.0 | Minimum confidence for hand detection (maps to `min_hand_detection_confidence`) |
+| `max_hands` | int | `2` | 1–4 | Maximum hands to detect simultaneously |
+| `frame_skip` | int | `1` | 0 to ∞ | Frames to skip between processing (0 = every frame, 1 = every 2nd) |
+| `log_level` | string | `"INFO"` | DEBUG, INFO, WARN, ERROR | Logging verbosity level |
+| `debug_mode` | bool | `false` | true/false | Enable verbose debug output (deprecated, use log_level) |
+
+**MediaPipe Internal Parameters (hardcoded in controller):**
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `min_hand_presence_confidence` | `0.5` | Minimum confidence that hand exists in ROI |
+| `min_tracking_confidence` | `0.5` | Minimum confidence to track vs re-detect |
+
+**Launch with Custom Parameters:**
+```bash
+# Default launch (uses 0.7 confidence threshold for safety)
+ros2 launch gesturebot gesture_recognition.launch.py
+
+# With parameter overrides
+ros2 launch gesturebot gesture_recognition.launch.py \
+    max_hands:=1 \
+    confidence_threshold:=0.5 \
+    debug_mode:=true
 ```
-OKS = Σ exp(-d²ᵢ / 2s²κ²ᵢ) × δ(vᵢ > 0) / Σ δ(vᵢ > 0)
-```
-Where:
-- `dᵢ` = Euclidean distance between predicted and ground truth keypoint i
-- `s` = Object scale (square root of person bounding box area)
-- `κᵢ` = Per-keypoint constant controlling falloff (larger for harder keypoints like wrists)
-- `vᵢ` = Visibility flag for keypoint i
 
-**Alternative Metric - PCK (Percentage of Correct Keypoints):**
-| Metric | Description |
-|--------|-------------|
-| PCK@0.5 | Keypoint correct if distance < 0.5 × head size |
-| PCK@0.2 | Stricter threshold for precise localization |
+**Why 0.7 instead of 0.5?** GestureBot uses a higher confidence threshold (0.7) to reduce false positive gestures that could trigger unintended navigation commands. This is more conservative but prevents accidental robot movements.
 
-**MediaPipe Pose Keypoints:** 33 landmarks including face, hands, and body joints.
+#### System Performance - Latency/CPU/Memory
 
-### Performance Benchmarks
+This section summarizes the performance characteristics of the gesture recognition pipeline on Raspberry Pi 5 using the recommended configuration (640×480, 15 FPS camera input, confidence threshold 0.5).
 
-Performance metrics measure how fast the system processes frames, independent of accuracy.
+##### Latency Characterization
 
-#### Inference Latency
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **Mean Latency** | 68.5 ms | End-to-end frame processing time |
+| **P95 Latency** | 71.7 ms | 95th percentile latency |
+| **P99 Latency** | 73.3 ms | 99th percentile latency |
+| **Mean FPS** | 14.6 | Sustained processing rate |
+| **Theoretical Max FPS** | ~14.6 | Limited by model inference |
 
-| Detection Type | Model | Avg Latency (ms) | FPS | Hardware |
-|----------------|-------|------------------|-----|----------|
-| Object Detection | EfficientDet Lite | 100.9 | ~10 | Pi 5, 8GB |
-| Gesture Recognition | MediaPipe Hands | TBD | TBD | Pi 5, 8GB |
-| Pose Detection | MediaPipe Pose | TBD | TBD | Pi 5, 8GB |
+##### Resource Usage
 
-**Measurement Methodology:**
-- Latency measured as pure inference time (excludes image loading, preprocessing, postprocessing)
-- FPS = 1000 / latency_ms
-- Tested on static images to isolate model performance from camera pipeline
+| Metric | Mean | P95 | Max | Notes |
+|--------|------|-----|-----|-------|
+| **CPU Usage** | 111.2% | 119.5% | 129.4% | Multi-core utilization |
+| **Memory** | 215.3 MB | 216.0 MB | 216.0 MB | Stable allocation |
+| **Temperature** | 56.2°C | 58.4°C | 59.5°C | With passive cooling |
 
-#### End-to-End Pipeline Latency
+##### Per-Gesture Accuracy
 
-| Pipeline Stage | Typical Latency |
-|----------------|-----------------|
-| Camera Capture | 20ms (50 FPS) |
-| Image Conversion (cv_bridge) | <5ms |
-| Model Inference | 100-200ms |
-| Result Publishing | <1ms |
-| **Total Pipeline** | **125-225ms** |
+Benchmark results from interactive testing with 10 seconds per gesture (936 total frames):
 
-### Resource Utilization
+| Gesture | Accuracy | Detection Rate | FPS | Latency (ms) |
+|---------|----------|----------------|-----|--------------|
+| 👊 Closed_Fist | 83.8% | 83.8% | 15.2 | 65.7 |
+| 🖐️ Open_Palm | 80.2% | 90.8% | 14.2 | 70.2 |
+| ☝️ Pointing_Up | 80.2% | 92.4% | 14.2 | 70.3 |
+| 👎 Thumb_Down | 70.7% | 79.3% | 15.3 | 65.5 |
+| 👍 Thumb_Up | 86.4% | 97.7% | 14.3 | 70.0 |
+| ✌️ Victory | 80.7% | 90.4% | 14.7 | 67.9 |
+| 🤟 ILoveYou | 84.7% | 95.4% | 14.3 | 70.1 |
+| **Overall** | **80.9%** | **89.9%** | **14.6** | **68.5** |
 
-Resource metrics measure computational cost during sustained operation.
+**Key Observations:**
+- **Best performing gestures**: Thumb_Up (86.4%), ILoveYou (84.7%), Closed_Fist (83.8%)
+- **Most challenging gesture**: Thumb_Down (70.7%) - often confused with similar hand positions
+- **Detection rate vs accuracy gap**: Open_Palm has high detection (90.8%) but lower accuracy (80.2%), indicating occasional misclassification
 
-| Resource | Object Detection | Gesture Recognition | Pose Detection |
-|----------|------------------|---------------------|----------------|
-| CPU Usage | ~40-60% | TBD | TBD |
-| Memory (RSS) | ~350MB | TBD | TBD |
-| GPU/NPU | N/A (CPU only) | N/A | N/A |
+##### Comparison: Gesture vs Object Detection
 
-**Thermal Considerations:**
-- Pi 5 throttles at 85°C
-- Active cooling recommended for sustained vision processing
-- Passive cooling sufficient for <5 FPS operation
+| Metric | Gesture Recognition | Object Detection (EfficientDet-Lite0) |
+|--------|---------------------|---------------------------------------|
+| Mean Latency | 68.5 ms | 110.9 ms |
+| Mean FPS | 14.6 | 9.0 |
+| CPU Usage (mean) | 111.2% | 68.1% |
+| Memory Usage | 215 MB | 206 MB |
+| Max Temperature | 59.5°C | 54.9°C |
 
-**Power Consumption:**
-- Idle: ~3W
-- Vision processing: ~7-10W
-- Peak (all features active): ~12W
+**Analysis:** Gesture recognition achieves higher FPS due to the lighter-weight hand landmark model, but consumes more CPU due to the multi-stage pipeline (palm detection → hand landmarks → gesture classification).
 
 ---
 
-## 4. OpenCV Integration
+## 4. Pose Detection
 
-### Ball Tracking
+Real-time body pose detection using MediaPipe, detecting 33 body landmarks with 4-pose navigation system (arms_raised, pointing_left, pointing_right, t_pose) for intuitive robot control through body movements.
 
-**Implementation:**
-- **Color-based Detection**: HSV color space filtering
-- **Contour Analysis**: Shape and size validation
-- **Kalman Filtering**: Smooth trajectory prediction
-- **Multi-ball Support**: Track multiple objects
+| *Screen recording* | *Click to watch on YouTube* |
+|:---------------------:|:---------------------:|
+| ![Pose detection demo](media/demos/pose.gif) | [![Pose detection video](https://img.youtube.com/vi/eUGK2X6XVN8/0.jpg)](https://youtu.be/eUGK2X6XVN8) |
+| *Body landmarks and pose classification* | *Full demonstration video* |
 
-![Ball Tracking Demo](media/ball_tracking_demo.gif)
-<!-- TODO: Record ball tracking with colored balls -->
+- **Model**: MediaPipe PoseLandmarker (pose_landmarker.task)
+- **33 Body Landmarks**: Full body pose detection with skeletal connections
+- **Multi-person Support**: Track up to 2 people simultaneously
+- **Real-time Performance**: 3-7 FPS @ 640x480 with RGB888 format
+- **Headless Operation**: No X11/UI dependencies required
 
-**Configuration:**
-```yaml
-ball_tracking_node:
-  ros__parameters:
-    color_lower: [0, 100, 100]    # HSV lower bound
-    color_upper: [10, 255, 255]   # HSV upper bound
-    min_radius: 10
-    max_radius: 100
+#### Data Flow: Pose Detection → Navigation
+
+```mermaid
+flowchart LR
+    subgraph INPUT["📷 Input"]
+        CAM["Pi Camera"]
+        CAMROS["camera_ros"]
+    end
+
+    subgraph VISION["🔍 Vision Processing"]
+        TOPIC1["/camera/image_raw"]
+        POSE["pose_detection_node<br/>(MediaPipe Pose)"]
+        TOPIC2["/vision/poses<br/>(PoseLandmarks)"]
+    end
+
+    subgraph CONTROL["🎮 Control"]
+        PNAV["pose_navigation_bridge"]
+        TOPIC3["/cmd_vel<br/>(Twist)"]
+    end
+
+    subgraph OUTPUT["🤖 Output"]
+        ROBOT["iRobot Create 2"]
+    end
+
+    CAM --> CAMROS --> TOPIC1 --> POSE --> TOPIC2 --> PNAV --> TOPIC3 --> ROBOT
 ```
 
-### Blob Detection
+**Data Flow Description:**
+1. **Camera Capture**: Pi Camera captures frames via `camera_ros` node
+2. **Image Publishing**: Raw images published to `/camera/image_raw` topic
+3. **Pose Detection**: `pose_detection_node` extracts 33 body landmarks per person
+4. **Pose Classification**: Landmarks analyzed to classify into one of 4 navigation poses
+5. **Navigation Bridge**: `pose_navigation_bridge` converts classified poses to motion commands
+6. **Motion Commands**: Twist messages published to `/cmd_vel` for robot control
 
-**Features:**
-- **SimpleBlobDetector**: OpenCV's optimized blob detection
-- **Size Filtering**: Configurable blob size ranges
-- **Circularity**: Shape-based filtering
-- **Real-time Performance**: Optimized for Pi 5
+![Pose Detection Demo](media/demos/pose_detection_demo.gif)
+<!-- Real-time pose detection with 33-point skeleton visualization -->
 
-### Color-based Tracking
+**4-Pose Navigation System:**
+| Pose | Action | Detection Criteria |
+|------|--------|-------------------|
+| 🙌 Arms Raised | Move Forward | Both wrists above shoulders |
+| 👈 Pointing Left | Turn Left | Left arm extended horizontally |
+| 👉 Pointing Right | Turn Right | Right arm extended horizontally |
+| 🧍 T-Pose | Stop | Both arms extended horizontally |
 
-**Capabilities:**
-- **HSV Color Space**: Robust color detection
-- **Dynamic Thresholding**: Adaptive color ranges
-- **Multiple Color Support**: Track different colored objects
-- **Lighting Compensation**: Automatic exposure adjustment
+#### Model Architecture
+
+**MediaPipe Pose Landmarker** uses a two-stage pipeline based on BlazePose with GHUM 3D human body model integration:
+
+```
+Input Image (variable size)
+         ↓
+┌─────────────────────────────┐
+│   Pose Detection Model      │  ← Locates person bounding box
+│   (224×224×3 input)         │     Single-shot detector (SSD-style)
+└─────────────────────────────┘
+         ↓
+┌─────────────────────────────┐
+│   Pose Landmark Model       │  ← Extracts 33 3D body landmarks
+│   (256×256×3 input)         │     BlazePose GHUM topology
+└─────────────────────────────┘
+         ↓
+Output: 33 landmarks (x, y, z, visibility, presence) + optional segmentation mask
+```
+
+**Pipeline Details:**
+
+| Stage | Input Size | Output | Purpose |
+|-------|------------|--------|---------|
+| Pose Detector | 224×224×3 RGB | Person bounding box | Locate person in frame |
+| Pose Landmarker | 256×256×3 RGB | 33 3D landmarks | Extract body keypoints |
+
+**Key Architectural Features:**
+
+- **BlazePose Backbone**: Lightweight CNN architecture optimized for mobile/edge inference
+- **GHUM 3D Integration**: Landmarks follow the GHUM (Generative 3D Human Shape Model) topology for anatomically consistent 3D coordinates
+- **Tracking Optimization**: Uses previous frame landmarks to skip detection stage when person is already tracked, reducing latency by ~50%
+- **World Coordinates**: Outputs real-world 3D coordinates (meters) with hip midpoint as origin, in addition to normalized image coordinates
+
+**Output Coordinate Systems:**
+
+| Coordinate Type | Description | Use Case |
+|-----------------|-------------|----------|
+| **Normalized (x, y)** | 0.0–1.0 relative to image dimensions | 2D overlay, gesture classification |
+| **Depth (z)** | Relative depth, hip midpoint as origin | Occlusion handling |
+| **World (x, y, z)** | Real-world meters, hip midpoint origin | 3D pose analysis, motion capture |
+| **Visibility** | Likelihood landmark is visible (0.0–1.0) | Confidence filtering |
+| **Presence** | Likelihood landmark exists (0.0–1.0) | Occlusion detection |
+
+**33 Body Landmarks (GHUM Topology):**
+
+| Index | Landmark | Index | Landmark | Index | Landmark |
+|-------|----------|-------|----------|-------|----------|
+| 0 | Nose | 11 | Left Shoulder | 23 | Left Hip |
+| 1 | Left Eye Inner | 12 | Right Shoulder | 24 | Right Hip |
+| 2 | Left Eye | 13 | Left Elbow | 25 | Left Knee |
+| 3 | Left Eye Outer | 14 | Right Elbow | 26 | Right Knee |
+| 4 | Right Eye Inner | 15 | Left Wrist | 27 | Left Ankle |
+| 5 | Right Eye | 16 | Right Wrist | 28 | Right Ankle |
+| 6 | Right Eye Outer | 17 | Left Pinky | 29 | Left Heel |
+| 7 | Left Ear | 18 | Right Pinky | 30 | Right Heel |
+| 8 | Right Ear | 19 | Left Index | 31 | Left Foot Index |
+| 9 | Mouth Left | 20 | Right Index | 32 | Right Foot Index |
+| 10 | Mouth Right | 21 | Left Thumb | | |
+| | | 22 | Right Thumb | | |
+
+**Landmark Groups:**
+
+| Group | Indices | Purpose |
+|-------|---------|---------|
+| Face | 0–10 | Head orientation, gaze direction |
+| Upper Body | 11–22 | Arm gestures, hand positions |
+| Lower Body | 23–32 | Leg positions, gait analysis |
+
+#### Model Variants & Quantization
+
+MediaPipe provides three pose landmarker model variants. GestureBot uses the **Lite** variant for optimal real-time performance on Raspberry Pi 5.
+
+**Available Model Variants:**
+
+| Variant | Size | Quantization | Accuracy | Speed | Use Case |
+|---------|------|--------------|----------|-------|----------|
+| **Lite** | ~3 MB | float16 | Good | Fastest | Real-time on edge devices (Pi 5) |
+| Full | ~6 MB | float16 | Better | Medium | Balanced accuracy/performance |
+| Heavy | ~26 MB | float16 | Best | Slowest | Maximum accuracy, offline processing |
+
+**Lite Model Details (GestureBot Default):**
+
+| Property | Value |
+|----------|-------|
+| Model File | `pose_landmarker_lite.task` |
+| Download Size | ~3 MB |
+| Quantization | float16 (no int8 available) |
+| Pose Detector Input | 224×224×3 RGB |
+| Pose Landmarker Input | 256×256×3 RGB |
+| Output | 33 landmarks with visibility/presence scores |
+
+**Benchmark Comparison (Pixel 6 CPU):**
+
+| Variant | Latency | FPS (theoretical) | Relative Speed |
+|---------|---------|-------------------|----------------|
+| **Lite** | ~12 ms | ~83 FPS | 1.0× (baseline) |
+| Full | ~25 ms | ~40 FPS | 0.48× |
+| Heavy | ~108 ms | ~9 FPS | 0.11× |
+
+**Raspberry Pi 5 Performance (Lite Model):**
+
+| Configuration | FPS | Latency | Notes |
+|---------------|-----|---------|-------|
+| Single pose, no segmentation | 5-8 FPS | 125-200 ms | GestureBot default |
+| Single pose, with segmentation | 3-5 FPS | 200-330 ms | Not recommended |
+| Multi-pose (2 people) | 3-5 FPS | 200-330 ms | Reduced throughput |
+
+**Why Lite Model for GestureBot:**
+
+1. **Sufficient Accuracy**: The 4-pose navigation system (arms raised, pointing left/right, T-pose) uses large body movements that are reliably detected even with the Lite model
+2. **Real-time Performance**: Achieves 5-8 FPS on Pi 5, adequate for responsive robot control
+3. **Memory Efficiency**: ~3 MB model size leaves headroom for other ROS 2 nodes
+4. **Tracking Optimization**: Frame-to-frame tracking reduces effective latency for continuous pose detection
+
+**Quantization Notes:**
+
+Unlike object detection models (which offer int8 variants), all pose landmarker models use **float16** quantization only. This is because:
+- Pose estimation requires higher precision for accurate 3D coordinate regression
+- Keypoint localization is more sensitive to quantization errors than bounding box detection
+- The float16 format provides a good balance between accuracy and inference speed
+
+**Segmentation Masks (Optional):**
+
+| Property | Value |
+|----------|-------|
+| Purpose | Pixel-level person segmentation for background removal |
+| Performance Impact | +20-30% processing time |
+| GestureBot Usage | **Disabled** (not needed for pose-based navigation) |
+| Enable via | `output_segmentation_masks: true` parameter |
+
+#### Model Performance
+
+Pose detection accuracy for the 4-pose navigation system is measured as pose classification correctness. Benchmark results from interactive testing on Raspberry Pi 5 (4GB) with Pi Camera Module 3 at 640x480 @ 15fps.
+
+##### Per-Pose Accuracy
+
+| Pose | Accuracy | Detection Rate | FPS | Latency (ms) |
+|------|----------|----------------|-----|--------------|
+| 🙌 arms_raised | 38.8% | 55.8% | 15.2 | 65.7 |
+| 👈 pointing_left | 71.9% | 98.6% | 14.1 | 70.8 |
+| 👉 pointing_right | 77.9% | 94.3% | 14.3 | 70.0 |
+| 🤸 t_pose | **92.2%** | **100%** | 14.3 | 69.9 |
+| **Overall** | **69.8%** | **86.8%** | **14.5** | **69.1** |
+
+##### Accuracy Visualization
+
+```
+Pose Classification Accuracy (%)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+arms_raised    ████████████████░░░░░░░░░░░░░░░░░░░░░░░░  38.8%
+pointing_left  ████████████████████████████████░░░░░░░░  71.9%
+pointing_right ████████████████████████████████████░░░░  77.9%
+t_pose         █████████████████████████████████████████  92.2%
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+               0%       25%       50%       75%      100%
+```
+
+**Key Observations:**
+- **Best performing pose**: T-pose (92.2%) — most distinctive with both arms extended
+- **Most challenging pose**: arms_raised (38.8%) — sensitive to timing at benchmark start
+- **Pointing poses**: 71.9-77.9% accuracy with excellent detection rates (94-99%)
+- **Detection rate vs accuracy**: pointing_left has 98.6% detection but 71.9% accuracy, indicating occasional misclassification
+
+##### Pose Classification Logic
+
+The classification uses normalized landmark coordinates with camera mirroring correction:
+
+| Pose | Detection Criteria |
+|------|-------------------|
+| 🙌 arms_raised | Both wrists above shoulders (wrist.y < shoulder.y) |
+| 👈 pointing_left | Left arm extended horizontally (wrist.x > elbow.x > shoulder.x) |
+| 👉 pointing_right | Right arm extended horizontally (wrist.x < elbow.x < shoulder.x) |
+| 🤸 t_pose | Both arms extended horizontally outward |
+
+> **Note:** Priority order is arms_raised → t_pose → pointing_left → pointing_right. T-pose is checked before pointing poses because it's more specific (requires both arms extended).
+
+#### Configuration Reference
+
+**Core Detection Parameters:**
+
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| `model_path` | string | `"models/pose_landmarker.task"` | Valid path | Path to pose landmarker task bundle |
+| `num_poses` | int | `1` | 1–5 | Maximum people to detect simultaneously |
+| `min_pose_detection_confidence` | float | `0.5` | 0.0–1.0 | Minimum confidence for person detection stage |
+| `min_pose_presence_confidence` | float | `0.5` | 0.0–1.0 | Minimum confidence that person exists in ROI |
+| `min_tracking_confidence` | float | `0.5` | 0.0–1.0 | Minimum confidence to track vs re-detect |
+| `frame_skip` | int | `1` | 0–∞ | Frames to skip between processing |
+| `log_level` | string | `"INFO"` | DEBUG/INFO/WARN/ERROR | Logging verbosity level |
+| `debug_mode` | bool | `false` | true/false | Enable verbose debug logging (deprecated, use log_level) |
+
+**Topic Configuration Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `camera_topic` | string | `"/camera/image_raw"` | Input camera image topic |
+| `pose_topic` | string | `"/vision/poses"` | Output pose landmarks topic |
+| `pose_annotated_topic` | string | `"/vision/poses/annotated"` | Annotated image output topic |
+
+**Pose Classification Parameters:**
+
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| `enable_pose_classification` | bool | `true` | true/false | Enable 4-pose action classification |
+| `horizontal_tolerance` | float | `0.15` | 0.0–0.5 | Tolerance for horizontal arm detection |
+| `pose_stability_frames` | int | `3` | 1–10 | Frames required for stable pose classification |
+
+**Visualization Parameters:**
+
+| Parameter | Type | Default | Range | Description |
+|-----------|------|---------|-------|-------------|
+| `landmark_color_r` | int | `0` | 0–255 | Landmark circle color (red component) |
+| `landmark_color_g` | int | `255` | 0–255 | Landmark circle color (green component) |
+| `landmark_color_b` | int | `0` | 0–255 | Landmark circle color (blue component) |
+| `text_color_r` | int | `255` | 0–255 | Text annotation color (red component) |
+| `text_color_g` | int | `255` | 0–255 | Text annotation color (green component) |
+| `text_color_b` | int | `255` | 0–255 | Text annotation color (blue component) |
+| `font_scale` | float | `1.0` | 0.5–2.0 | Text annotation font scale |
+| `landmark_radius` | int | `5` | 1–15 | Landmark circle radius in pixels |
+| `skeleton_thickness` | int | `2` | 1–5 | Skeleton line thickness in pixels |
+
+**Launch with Custom Parameters:**
+```bash
+# Default launch
+ros2 launch gesturebot pose_detection.launch.py
+
+# With parameter overrides
+ros2 launch gesturebot pose_detection.launch.py \
+    num_poses:=1 \
+    min_pose_detection_confidence:=0.5 \
+    min_tracking_confidence:=0.3 \
+    enable_pose_classification:=true
+
+# Runtime parameter changes
+ros2 param set /pose_detection_node min_pose_detection_confidence 0.7
+ros2 param set /pose_detection_node horizontal_tolerance 0.2
+```
+
+> **Note:** Camera parameters are configured in the launch file for optimal performance.
+
+#### System Performance - Latency/CPU/Memory
+
+This section summarizes the performance characteristics of the pose detection pipeline on Raspberry Pi 5 using the recommended configuration (640×480, 15 FPS camera input, Lite model variant).
+
+##### Latency Characterization
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| **Mean Latency** | 69.1 ms | End-to-end frame processing time |
+| **P95 Latency** | 77.1 ms | 95th percentile latency |
+| **P99 Latency** | 87.0 ms | 99th percentile latency |
+| **Mean FPS** | 14.5 | Sustained processing rate |
+
+##### Resource Usage
+
+| Metric | Mean | P95 | Max | Notes |
+|--------|------|-----|-----|-------|
+| **CPU Usage** | 107.6% | 119.4% | 119.5% | Multi-core utilization |
+| **Memory** | 208.2 MB | 209.3 MB | 209.3 MB | Stable allocation |
+| **Temperature** | 53.1°C | 55.1°C | 56.2°C | With passive cooling |
+
+##### Latency by Pose
+
+```
+Latency Distribution (ms)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+arms_raised    ████████████████████████████████░░░░░░░░  65.7 ms
+pointing_left  ██████████████████████████████████░░░░░░  70.8 ms
+pointing_right █████████████████████████████████░░░░░░░  70.0 ms
+t_pose         █████████████████████████████████░░░░░░░  69.9 ms
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+               0ms      25ms      50ms      75ms     100ms
+```
+
+##### Comparison: Pose vs Gesture vs Object Detection
+
+| Metric | Pose Detection | Gesture Recognition | Object Detection |
+|--------|----------------|---------------------|------------------|
+| Mean Latency | 69.1 ms | 68.5 ms | 110.9 ms |
+| Mean FPS | 14.5 | 14.6 | 9.0 |
+| CPU Usage (mean) | 107.6% | 111.2% | 68.1% |
+| Memory Usage | 208 MB | 215 MB | 206 MB |
+| Max Temperature | 56.2°C | 59.5°C | 54.9°C |
+
+**Analysis:** Pose detection achieves similar performance to gesture recognition due to comparable model complexity. Both significantly outperform object detection in FPS, but consume more CPU due to multi-stage pipelines (person detection → landmark extraction → classification).
 
 ---
 
 ## 5. Navigation Integration
 
-![Navigation Integration Overview](media/navigation_integration.png)
-<!-- TODO: Create diagram showing vision-navigation integration -->
+The GestureBot provides two complementary navigation control systems: **gesture-based control** using hand gestures and **pose-based control** using body poses. Both systems feature velocity smoothing for stable robot motion.
 
 ### Gesture-based Robot Control
 
-**Control Mapping:**
-| Gesture | Navigation Command | Robot Action |
-|---------|-------------------|--------------|
-| 👍 Thumbs Up | `start_navigation` | Begin autonomous navigation |
-| 👎 Thumbs Down | `stop_navigation` | Stop all movement |
-| ✋ Open Palm | `pause_navigation` | Pause current navigation |
-| 👆 Pointing Up | `move_forward` | Move forward briefly |
-| 👈 Pointing Left | `turn_left` | Turn left |
-| 👉 Pointing Right | `turn_right` | Turn right |
-| ✌️ Peace Sign | `follow_person` | Enter person-following mode |
-| ✊ Fist | `emergency_stop` | Immediate emergency stop |
-| 👋 Wave | `return_home` | Return to home position |
+The gesture navigation bridge translates hand gestures into direct velocity commands for intuitive robot control.
 
-![Gesture Control Demo](media/gesture_control_demo.gif)
-<!-- TODO: Record complete gesture control sequence -->
+**Control Mapping:**
+| Gesture | Motion Command | Robot Action |
+|---------|----------------|--------------|
+| 👍 Thumb Up | Forward | Move forward at 0.3 m/s |
+| 👎 Thumb Down | Backward | Move backward at 0.2 m/s |
+| ✋ Open Palm | Stop | Stop all movement |
+| 👆 Pointing Up | Forward | Move forward at 0.3 m/s |
+| ✌️ Victory | Turn Left | Turn left at 0.8 rad/s |
+| 🤟 I Love You | Turn Right | Turn right at 0.8 rad/s |
+| ✊ Closed Fist | Emergency Stop | Immediate emergency stop |
+
+**Key Features:**
+- **Direct Velocity Control**: Gestures map directly to velocity commands
+- **Velocity Smoothing**: 25 Hz acceleration limiting prevents abrupt motion
+- **Emergency Gestures**: Closed Fist and Open Palm trigger immediate stops
+- **Gesture Timeout**: Auto-stop if no gestures detected for 2 seconds
+
+![Gesture Control Demo](media/demos/gesture.gif)
 
 ### 4-Pose Navigation System
 
-**✅ Implementation Status: COMPLETE**
+The 4-pose navigation system provides direct robot control through body poses, offering an alternative to gesture-based control for situations where hand gestures may not be practical.
 
-The GestureBot now features a **simplified 4-pose navigation system** that provides direct robot control through body poses, offering an alternative to gesture-based control for situations where hand gestures may not be practical.
-
-![4-Pose Navigation Demo](media/demos/4_pose_navigation_demo.gif)
-<!-- TODO: Record 4-pose navigation demonstration -->
+![4-Pose Navigation Demo](media/demos/pose.gif)
 
 **Supported Poses:**
 | Pose | Action | Navigation Command | Robot Behavior |
@@ -920,8 +1633,8 @@ ros2 launch gesturebot pose_detection.launch.py
 ros2 launch gesturebot pose_navigation_bridge.launch.py
 
 # Terminal 3: View pose detection with skeleton
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/poses/annotated"]'
+ros2 run gesturebot image_viewer_node.py --ros-args \
+    -p image_topic:=/vision/poses/annotated
 ```
 
 **Configuration:**
@@ -937,12 +1650,7 @@ pose_navigation_bridge:
 
 ### Standalone Person Following
 
-**✅ Implementation Status: COMPLETE**
-
-The GestureBot features an advanced **standalone person following system** that uses object detection to autonomously follow a person while maintaining safe distances and smooth motion control.
-
-![Person Following Demo](media/demos/person_following_demo.gif)
-<!-- TODO: Record person following demonstration -->
+The person following system uses object detection to autonomously follow a person while maintaining safe distances and smooth motion control.
 
 **Key Capabilities:**
 - **Autonomous Person Detection**: Uses existing object detection system to identify and track people
@@ -998,93 +1706,21 @@ person_following_controller:
 
 **Multi-layered Safety:**
 - **Confidence Thresholds**: High confidence required for navigation commands
-- **Gesture Stability**: Commands require stable gesture for 0.5 seconds
-- **Emergency Override**: Fist gesture immediately stops robot
-- **Collision Avoidance**: Object detection feeds into navigation costmap
-
-![Safety Systems Visualization](media/safety_systems.png)
-<!-- TODO: Create diagram showing all safety layers -->
+- **Gesture Timeout**: Auto-stop if no gestures detected for configurable timeout period
+- **Emergency Override**: Closed Fist gesture immediately stops robot
+- **Velocity Smoothing**: Acceleration limiting prevents abrupt motion changes
 
 ### Emergency Stop Features
 
 **Emergency Triggers:**
-- **Gesture-based**: Fist gesture for immediate stop
-- **Object Detection**: Large obstacle detection
-- **System Monitoring**: CPU/memory overload protection
+- **Gesture-based**: Closed Fist or Open Palm gesture for immediate stop
+- **Pose-based**: T-pose for immediate stop
+- **Timeout Protection**: Auto-stop when no valid input detected
 - **Manual Override**: ROS 2 service call emergency stop
 
 ---
 
-## 6. Performance & Optimization
-
-### Performance Specifications
-
-**✅ Validated Performance (Raspberry Pi 5):**
-
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Object Detection** | 5 FPS @ 640x480 | Optimized for stability |
-| **Pose Detection** | 3-7 FPS @ 640x480 | Real-time 33-point landmarks |
-| **Gesture Recognition** | 10+ FPS @ 640x480 | Real-time hand tracking |
-| **Camera Pipeline** | RGB888 format | 20ms exposure time |
-| **Manual Annotations** | <5ms overhead | Additional processing |
-| **Detection Confidence** | 70-88% | Typical confidence levels |
-| **System Stability** | 100% uptime | Extended testing verified |
-
-**✅ Current Achievements:**
-- **Real-time Processing**: MediaPipe LIVE_STREAM mode with detect_async()
-- **Custom Visualization**: Manual OpenCV annotations with color coding
-- **Optimized Configuration**: 5 FPS target with 20ms exposure (10x faster than original)
-- **Multi-object Detection**: Simultaneous detection of person, keyboard, tv, etc.
-- **4-Pose Navigation**: Real-time pose classification with direct robot control
-- **Person Following**: Autonomous person tracking with smooth motion control
-- **Multi-Modal Control**: Gesture, pose, and person following navigation options
-
-![Performance Benchmarks](media/benchmarks/performance_charts.png)
-<!-- Performance benchmark charts showing 5 FPS stable operation with manual annotations -->
-
-### Resource Management
-
-**Adaptive Processing System:**
-- **CPU < 60%**: All features enabled
-- **CPU 60-75%**: Disable low priority features
-- **CPU 75-90%**: Only high priority features
-- **CPU > 90%**: Critical features only
-
-![Resource Management Chart](media/resource_management.png)
-<!-- TODO: Create chart showing adaptive processing behavior -->
-
-**Priority Levels:**
-- **Priority 0 (Critical)**: Object detection, safety systems
-- **Priority 1 (High)**: Gesture recognition, navigation
-- **Priority 2 (Medium)**: Hand/pose landmarks
-- **Priority 3 (Low)**: Analysis features, classification
-
-### Adaptive Processing
-
-**Dynamic Feature Control:**
-```python
-# Automatic feature management based on system load
-if cpu_usage > 75:
-    disable_low_priority_features()
-elif cpu_usage > 60:
-    disable_medium_priority_features()
-```
-
-### Benchmarking Tools
-
-**Performance Monitoring:**
-- **Real-time Metrics**: FPS, processing time, memory usage
-- **Historical Analysis**: Performance trends over time
-- **Comparative Testing**: Feature-by-feature performance analysis
-- **Hardware Profiling**: CPU, GPU, memory utilization
-
-![Performance Dashboard](media/performance_dashboard.png)
-<!-- TODO: Screenshot of performance monitoring dashboard -->
-
----
-
-## 7. Installation & Setup
+## 6. Getting Started
 
 > **📖 Complete Setup Guide**: For full project setup instructions, see the [main project README](../../../README.md)
 
@@ -1096,11 +1732,15 @@ elif cpu_usage > 60:
 - **Hardware**: Raspberry Pi 5 (8GB recommended) with Pi Camera Module
 - **Storage**: 64GB+ MicroSD card (Class 10)
 
-### Package-Specific Setup
+**Dependencies:**
+- **ROS 2 System Packages**: Installed via `rosdep install`
+- **Virtual Environment Packages**: MediaPipe, OpenCV (installed via `pip`)
+- **Source-Built Tools**: libcamera, rpicam-apps, camera_ros
 
-**This package requires the standardized ROS 2 + virtual environment workflow:**
+### Installation
 
-#### **Environment Activation (Required)**
+#### Environment Setup
+
 ```bash
 # Option 1: Use convenience script (recommended)
 cd ~/GestureBot/gesturebot_ws
@@ -1110,199 +1750,78 @@ source activate_gesturebot.sh
 source ~/GestureBot/gesturebot_env/bin/activate  # Virtual env FIRST
 source /opt/ros/jazzy/setup.bash                 # ROS 2 SECOND
 source ~/GestureBot/gesturebot_ws/install/setup.bash  # Workspace THIRD
-```
-
-#### **Build This Package**
-```bash
-# Ensure environment is activated (see above)
-cd ~/GestureBot/gesturebot_ws
-
-# Build gesturebot package
-colcon build --packages-select gesturebot
-
-# Source the built package
-source install/setup.bash
-```
-
-#### **Verify Package Installation**
-```bash
-# Test package availability
-ros2 pkg list | grep gesturebot
-
-# Test Python integration (virtual environment must be active!)
-python3 -c "
-import rclpy
-import mediapipe as mp
-from gesturebot.vision_core import MediaPipeProcessor
-print('✅ gesturebot package ready!')
-"
-```
-
-### Dependencies
-
-**This package depends on:**
-- **ROS 2 System Packages**: Installed via `rosdep install`
-- **Virtual Environment Packages**: MediaPipe, OpenCV (installed via `pip`)
-- **Source-Built Tools**: libcamera, rpicam-apps, camera_ros
-
-**Note**: Package.xml has been configured to exclude conflicting camera and MediaPipe system dependencies.
-
-### Camera_ros Build Instructions
-
-The `camera_ros` package provides ROS 2 integration for the source-built libcamera system. This must be built separately from the main gesturebot package.
-
-**Prerequisites:**
-- libcamera and rpicam-apps already built and installed system-wide
-- ROS 2 Jazzy properly installed
-- Source code available at `~/GestureBot/gesturebot_ws/src/camera_ros/`
-
-**Build Process:**
-```bash
-# 1. Navigate to workspace
-cd ~/GestureBot/gesturebot_ws
-
-# 2. Install ROS 2 build dependencies (skip libcamera to use source-built version)
-source /opt/ros/jazzy/setup.bash
-rosdep install -y --from-paths src --ignore-src --rosdistro jazzy --skip-keys=libcamera
-
-# 3. Build camera_ros package
-colcon build --packages-select camera_ros --event-handlers=console_direct+
-
-# 4. Source the workspace
-source install/setup.bash
-```
-
-**Verification:**
-```bash
-# Check package is available
-ros2 pkg list | grep camera_ros
-
-# Test camera node startup
-ros2 run camera_ros camera_node
-
-# Verify topics are published (in another terminal)
-ros2 topic list | grep camera
-# Expected: /camera/image_raw, /camera/image_raw/compressed, /camera/camera_info
-
-# Check image stream
-ros2 topic echo /camera/image_raw --once
-```
-
-**Usage:**
-```bash
-# Basic camera streaming (800x600 default)
-ros2 run camera_ros camera_node
-
-# Custom resolution
-ros2 run camera_ros camera_node --ros-args -p width:=1920 -p height:=1080
-
-# With image rotation
-ros2 run camera_ros camera_node --ros-args -p orientation:=180
-
-# High frame rate with compressed images only
-ros2 launch camera_ros camera_compressed_only.launch.py
-```
-
-**Important Notes:**
-- camera_ros uses the existing source-built libcamera installation
-- Only one process can access the camera at a time (camera_ros OR rpicam-still, not both)
-- Build time: ~45 seconds on Raspberry Pi 5
-- Default resolution: 800x600 @ stable frame rate
-- Compressed images recommended for network streaming
-colcon build --packages-select gesturebot
-
-# 4. Source environment
-source install/setup.bash
-```
-
----
-
-## 8. Configuration & Usage
-
-### Environment Activation (Required)
-
-**Before using this package, ensure proper environment activation:**
-```bash
-# Activate virtual environment + ROS 2 + workspace
-cd ~/GestureBot/gesturebot_ws
-source activate_gesturebot.sh
 
 # Verify environment
 python3 -c "import rclpy, mediapipe; print('✅ Environment ready!')"
 ```
 
-### Launch Files
+#### Building Packages
 
-**Modular Launch Commands:**
 ```bash
-# Object detection with annotated images (publish_annotated_images defaults to true)
-ros2 launch gesturebot object_detection.launch.py \
-    camera_format:=RGB888 \
-    buffer_logging_enabled:=false \
-    enable_performance_tracking:=false
+cd ~/GestureBot/gesturebot_ws
 
-# Gesture recognition with hand landmarks (publish_annotated_images defaults to true)
-ros2 launch gesturebot gesture_recognition.launch.py \
-    camera_format:=BGR888 \
-    buffer_logging_enabled:=false \
-    enable_performance_tracking:=false
+# Build gesturebot package
+colcon build --packages-select gesturebot
+source install/setup.bash
 
-# Pose detection with 33-point skeleton (publish_annotated_images defaults to true)
-ros2 launch gesturebot pose_detection.launch.py \
-    buffer_logging_enabled:=false \
-    enable_performance_tracking:=false
-
-# 4-pose navigation system (NEW!)
-ros2 launch gesturebot pose_navigation_bridge.launch.py \
-    pose_confidence_threshold:=0.7 \
-    max_linear_velocity:=0.3 \
-    max_angular_velocity:=0.8
-
-# Standalone person following system (NEW!)
-ros2 launch gesturebot person_following.launch.py \
-    target_distance:=1.5 \
-    min_safe_distance:=0.8 \
-    max_follow_distance:=5.0
-
-# Unified image viewer for visual feedback (in separate terminal)
-# Single topic display
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated"]' \
-    display_fps:=10.0 \
-    show_fps_overlay:=true
-
-# Multiple topics simultaneously
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated"]' \
-    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures"}' \
-    display_fps:=10.0
-
-# View pose detection output
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/poses/annotated"]' \
-    display_fps:=10.0
+# Build camera_ros (requires source-built libcamera)
+rosdep install -y --from-paths src --ignore-src --rosdistro jazzy --skip-keys=libcamera
+colcon build --packages-select camera_ros --event-handlers=console_direct+
+source install/setup.bash
 ```
 
-**Complete System Launch Examples:**
+#### Verification
 
-**Option 1: Gesture-Based Navigation (Original)**
+```bash
+# Test package availability
+ros2 pkg list | grep -E "gesturebot|camera_ros"
+
+# Test camera
+ros2 run camera_ros camera_node
+ros2 topic list | grep camera  # Expected: /camera/image_raw, /camera/camera_info
+```
+
+### Running the System
+
+#### Basic Launch Commands
+
+```bash
+# Object detection with annotated images
+ros2 launch gesturebot object_detection.launch.py camera_format:=RGB888
+
+# Gesture recognition with hand landmarks
+ros2 launch gesturebot gesture_recognition.launch.py camera_format:=BGR888
+
+# Pose detection with 33-point skeleton
+ros2 launch gesturebot pose_detection.launch.py
+
+# 4-pose navigation system
+ros2 launch gesturebot pose_navigation_bridge.launch.py \
+    pose_confidence_threshold:=0.7 \
+    max_linear_velocity:=0.3
+
+# Standalone person following system
+ros2 launch gesturebot person_following.launch.py \
+    target_distance:=1.5 \
+    min_safe_distance:=0.8
+```
+
+#### Complete System Examples
+
+**Gesture-Based Navigation:**
 ```bash
 # Terminal 1: Start gesture recognition system
-ros2 launch gesturebot gesture_recognition.launch.py \
-    camera_format:=BGR888 \
-    buffer_logging_enabled:=false \
-    enable_performance_tracking:=false
+ros2 launch gesturebot gesture_recognition.launch.py camera_format:=BGR888
 
 # Terminal 2: Start gesture navigation bridge
 ros2 launch gesturebot gesture_navigation_bridge.launch.py
 
-# Terminal 3: Start unified image viewer for gestures
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/gestures/annotated"]' \
-    window_name:="GestureBot Gestures"
+# Terminal 3: View output
+ros2 run gesturebot image_viewer_node.py --ros-args \
+    -p image_topic:=/vision/gestures/annotated
 ```
 
-**Option 2: 4-Pose Navigation (NEW!)**
+**4-Pose Navigation:**
 ```bash
 # Terminal 1: Start pose detection with classification
 ros2 launch gesturebot pose_detection.launch.py
@@ -1310,13 +1829,12 @@ ros2 launch gesturebot pose_detection.launch.py
 # Terminal 2: Start pose navigation bridge
 ros2 launch gesturebot pose_navigation_bridge.launch.py
 
-# Terminal 3: View pose detection with skeleton
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/poses/annotated"]' \
-    window_name:="GestureBot Poses"
+# Terminal 3: View output
+ros2 run gesturebot image_viewer_node.py --ros-args \
+    -p image_topic:=/vision/poses/annotated
 ```
 
-**Option 3: Standalone Person Following (NEW!)**
+**Person Following:**
 ```bash
 # Terminal 1: Start object detection system
 ros2 launch gesturebot object_detection.launch.py
@@ -1324,142 +1842,85 @@ ros2 launch gesturebot object_detection.launch.py
 # Terminal 2: Start person following controller
 ros2 launch gesturebot person_following.launch.py
 
-# Terminal 3: Activate person following mode
+# Terminal 3: Activate following mode
 ros2 service call /follow_mode/activate std_srvs/srv/SetBool "data: true"
-
-# Terminal 4: View object detection with person tracking
-ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated"]' \
-    window_name:="Person Following"
 ```
 
-**Multi-Modal Vision System:**
+### Image Viewer
+
+The unified image viewer consolidates multiple image streams into a single, efficient display system.
+
+![Unified Image Viewer Demo](media/demos/unified_image_viewer_demo.gif)
+
+**Key Features:**
+- **Single Node Architecture**: One `UnifiedImageViewerNode` replaces multiple separate viewers
+- **Simultaneous Display**: View multiple vision streams in separate windows
+- **Resource Efficient**: ~15MB per window, <5% CPU at 10 FPS
+- **Per-topic FPS Tracking**: Individual performance monitoring
+
+**Supported Topics:**
+- `/vision/objects/annotated` - Object detection with bounding boxes
+- `/vision/gestures/annotated` - Gesture recognition with hand landmarks
+- `/vision/poses/annotated` - Pose detection with 33-point skeleton
+- `/camera/image_raw` - Raw camera feed
+
+**Usage:**
 ```bash
-# View multiple vision systems simultaneously (if multiple systems running)
+# Single topic (recommended)
+ros2 run gesturebot image_viewer_node.py --ros-args \
+    -p image_topic:=/vision/objects/annotated \
+    -p display_fps:=10.0 \
+    -p show_fps_overlay:=true
+
+# Multiple topics
 ros2 launch gesturebot image_viewer.launch.py \
-    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated", "/vision/poses/annotated"]' \
-    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures", "\/vision\/poses\/annotated": "Poses"}'
+    image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated"]' \
+    topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures"}'
 ```
 
-### Parameter Tuning
+**Keyboard Controls:** 'q' or ESC to quit, 's' to screenshot
 
-**Configuration File:**
+### Configuration
+
+#### Parameter Files
+
 ```yaml
 # config/vision_params.yaml
-vision_system:
-  camera_topic: "/camera/image_raw"
-  debug_mode: false
-  performance_monitoring: true
-
 object_detection_node:
   ros__parameters:
     confidence_threshold: 0.5
     max_results: 5
-    enabled: true
 
 gesture_recognition_node:
   ros__parameters:
     confidence_threshold: 0.7
     max_hands: 2
-    enabled: true
 
 pose_detection_node:
   ros__parameters:
     confidence_threshold: 0.5
     max_poses: 2
-    enabled: true
 ```
 
-### Topic Monitoring
+#### Topic Monitoring
 
-**Key Topics:**
 ```bash
 # Vision results
 ros2 topic echo /vision/objects
 ros2 topic echo /vision/gestures
-ros2 topic echo /vision/hand_landmarks
-ros2 topic echo /vision/poses          # NEW: Pose detection with classification
-ros2 topic echo /vision/poses/landmarks
-
-# Performance monitoring
-ros2 topic echo /vision/*/performance
+ros2 topic echo /vision/poses
 
 # Navigation commands
 ros2 topic echo /cmd_vel
 ros2 topic echo /emergency_stop
 
-# Person following (NEW!)
+# Person following control
 ros2 service call /follow_mode/activate std_srvs/srv/SetBool "data: true"
-ros2 service call /follow_mode/activate std_srvs/srv/SetBool "data: false"
 ```
 
 ---
 
-## 9. Development & Testing
-
-### Adding New Features
-
-**Development Workflow:**
-1. Create new node inheriting from `MediaPipeBaseNode`
-2. Implement required abstract methods
-3. Add message definitions if needed
-4. Update launch files and configuration
-5. Add comprehensive tests
-
-**Example Node Structure:**
-```python
-from vision_core.base_node import MediaPipeBaseNode
-
-class CustomVisionNode(MediaPipeBaseNode):
-    def initialize_mediapipe(self) -> bool:
-        # Initialize MediaPipe components
-        pass
-    
-    def process_frame(self, frame, timestamp) -> Any:
-        # Process frame with custom algorithm
-        pass
-    
-    def publish_results(self, results, timestamp) -> None:
-        # Publish results to ROS 2 topics
-        pass
-```
-
-### Testing Framework
-
-**Comprehensive Testing:**
-```bash
-# Ensure environment is activated first
-source ~/GestureBot/gesturebot_ws/activate_gesturebot.sh
-
-# Run all MediaPipe feature tests
-cd ~/GestureBot/gesturebot_ws/src/gesturebot/test
-python3 mediapipe_feature_tester.py
-
-# Quick functionality test
-python3 quick_test.py
-
-# Run all tests
-python3 run_all_tests.py
-
-# Integration tests
-cd ~/GestureBot/gesturebot_ws
-colcon test --packages-select gesturebot
-```
-
-![Testing Results](media/testing_results.png)
-<!-- TODO: Screenshot of test results and performance metrics -->
-
-### Performance Benchmarking
-
-**Benchmark Categories:**
-- **Feature Performance**: Individual MediaPipe feature testing
-- **System Integration**: Combined feature performance
-- **Hardware Utilization**: CPU, memory, and thermal analysis
-- **Comparative Analysis**: Before/after optimization comparisons
-
----
-
-## 10. Troubleshooting
+## 7. Troubleshooting
 
 ### Common Issues
 
@@ -1586,24 +2047,36 @@ colcon build --packages-select gesturebot --symlink-install
 
 ### Parameter Type Issues
 
-**JSON Array Parameter Errors:**
-```bash
-# Problem: "Allowed value types are..." error with image_topics parameter
-# Root Cause: ROS 2 launch files require explicit parameter type handling
+**Image Viewer Topic Parameters:**
 
-# ❌ Wrong: This will cause parameter type errors
+The image viewer now supports two parameter options:
+- `image_topic` (singular): Simple string for single-topic viewing (**recommended**)
+- `image_topics` (plural): JSON array string for multi-topic viewing
+
+```bash
+# ✅ RECOMMENDED: Use simple image_topic parameter for single topics
+ros2 run gesturebot image_viewer_node.py --ros-args \
+    -p image_topic:=/vision/objects/annotated
+
+# ✅ For multiple topics, use image_topics with JSON array format
+ros2 run gesturebot image_viewer_node.py --ros-args \
+    -p 'image_topics:="[\"\/vision\/objects\/annotated\", \"\/vision\/gestures\/annotated\"]"'
+
+# ❌ Wrong: Missing quotes around JSON array
 ros2 launch gesturebot image_viewer.launch.py \
     image_topics:=["/vision/objects/annotated"]
 
-# ✅ Correct: Use JSON string format
+# ✅ Correct: Proper JSON string format for launch files
 ros2 launch gesturebot image_viewer.launch.py \
     image_topics:='["/vision/objects/annotated"]'
 
-# ✅ Multiple topics with custom window names
+# ✅ Multiple topics with custom window names (launch file)
 ros2 launch gesturebot image_viewer.launch.py \
     image_topics:='["/vision/objects/annotated", "/vision/gestures/annotated"]' \
     topic_window_names:='{"\/vision\/objects\/annotated": "Objects", "\/vision\/gestures\/annotated": "Gestures"}'
 ```
+
+> **Note:** If both `image_topic` and `image_topics` are set, `image_topic` takes precedence.
 
 **Gesture Recognition Parameter Consistency:**
 ```bash
@@ -1620,48 +2093,6 @@ ros2 launch gesturebot gesture_recognition.launch.py \
 # ✅ Object detection also defaults to enabled
 ros2 launch gesturebot object_detection.launch.py
 ```
-
----
-
-## API Documentation
-
-**Core Classes:**
-- `MediaPipeBaseNode`: Base class for all vision nodes (in `vision_core`)
-- `MessageConverter`: Utility for ROS 2 message conversion
-
-**Message Types (from ros2_mediapipe package):**
-- `DetectedObject` / `DetectedObjects`: Object detection results with bounding boxes
-- `HandGesture`: Gesture recognition output with gesture name and confidence
-- `PoseLandmarks`: 33-point pose landmarks with pose action classification
-
-**Navigation Bridge Nodes:**
-- `gesture_navigation_bridge`: Converts hand gestures to velocity commands
-- `pose_navigation_bridge`: Converts body poses to velocity commands (4-pose system)
-- `person_following_controller`: Autonomous person following with object detection
-
-**Standard ROS 2 Services Used:**
-- `std_srvs/srv/SetBool`: Activate/deactivate person following mode
-
----
-
-## Contributing
-
-We welcome contributions from the robotics and computer vision community! 
-
-**Areas for Contribution:**
-- Additional MediaPipe features
-- Custom ML model integration
-- Performance optimizations
-- Hardware support expansion
-- Documentation improvements
-
-**Development Guidelines:**
-- Follow ROS 2 Jazzy best practices
-- Maintain modular architecture
-- Include comprehensive tests
-- Document all new features
-- Use virtual environment for ML/CV dependencies
-- Preserve source-built camera tool compatibility
 
 ---
 

@@ -49,12 +49,6 @@ def generate_launch_description():
         description='Camera image height'
     )
 
-    declare_camera_fps = DeclareLaunchArgument(
-        'camera_fps',
-        default_value='5.0',
-        description='Camera frame rate'
-    )
-
     # Object detection configuration
     declare_enable_object_detection = DeclareLaunchArgument(
         'enable_object_detection',
@@ -76,8 +70,8 @@ def generate_launch_description():
 
     declare_frame_skip = DeclareLaunchArgument(
         'frame_skip',
-        default_value='1',
-        description='Process every Nth frame (1 = process all frames)'
+        default_value='0',
+        description='Process every Nth frame (0 = process all frames)'
     )
 
     # Debug configuration
@@ -108,7 +102,7 @@ def generate_launch_description():
             "height": LaunchConfiguration('camera_height'),
             "format": LaunchConfiguration('camera_format'),
             "buffer_queue_size": 2,
-            "FrameDurationLimits": [200000, 200000],  # 5 FPS
+            "FrameDurationLimits": [100000, 100000],  # 10 FPS - optimal for Pi 5 (see README)
             "ExposureTime": 20000,
             "AnalogueGain": 1.0,
             "DigitalGain": 1.0,
@@ -165,7 +159,6 @@ def generate_launch_description():
         declare_camera_format,
         declare_camera_width,
         declare_camera_height,
-        declare_camera_fps,
         declare_enable_object_detection,
         declare_confidence_threshold,
         declare_max_results,
