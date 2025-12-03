@@ -59,6 +59,12 @@ class UnifiedImageViewerNode(Node):
         )
 
         self.declare_parameter(
+            'image_topic',
+            '',
+            ParameterDescriptor(description='Single image topic to subscribe to (simpler alternative to image_topics)')
+        )
+
+        self.declare_parameter(
             'image_topics',
             '["/vision/objects/annotated"]',
             ParameterDescriptor(description='List of ROS image topics to subscribe to (JSON array string format)')
@@ -77,14 +83,20 @@ class UnifiedImageViewerNode(Node):
         self.window_height = self.get_parameter('window_height').get_parameter_value().integer_value
         self.show_fps_overlay = self.get_parameter('show_fps_overlay').get_parameter_value().bool_value
 
-        # Parse image topics from JSON string
-        image_topics_str = self.get_parameter('image_topics').get_parameter_value().string_value
-        try:
-            import json
-            self.image_topics = json.loads(image_topics_str)
-        except json.JSONDecodeError as e:
-            self.get_logger().error(f"Invalid JSON for image_topics: {e}")
-            self.image_topics = ['/vision/objects/annotated']  # fallback
+        # Parse image topics - check simple image_topic first, then fall back to image_topics
+        import json
+        single_topic = self.get_parameter('image_topic').get_parameter_value().string_value
+        if single_topic:
+            # Use simple single topic parameter
+            self.image_topics = [single_topic]
+        else:
+            # Parse image_topics from JSON string
+            image_topics_str = self.get_parameter('image_topics').get_parameter_value().string_value
+            try:
+                self.image_topics = json.loads(image_topics_str)
+            except json.JSONDecodeError as e:
+                self.get_logger().error(f"Invalid JSON for image_topics: {e}")
+                self.image_topics = ['/vision/objects/annotated']  # fallback
 
         # Parse topic window names if provided (JSON format)
         self.topic_window_names = self.get_parameter('topic_window_names').get_parameter_value().string_value
